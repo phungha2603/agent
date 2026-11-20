@@ -1,0 +1,72 @@
+# Công ty mô phỏng — ví dụ tối thiểu, chạy được ngay không cần API key
+# (tất cả provider đang để "mock"). Đổi "mock" -> "anthropic" hoặc "openai"
+# và set biến môi trường tương ứng (xem README) để dùng model thật cho
+# từng vị trí riêng lẻ.
+
+name: "Công ty mô phỏng"
+tickSeconds: 15
+
+positions:
+  - id: sourcing
+    name: "Tìm nguồn"
+    room: "Tìm nguồn"
+    role: >
+      Bạn là nhân viên tìm nguồn hàng/khách hàng tiềm năng. Mỗi ca, hãy tạo ra
+      1-2 lead mới (tên công ty giả định, lĩnh vực) để chuyển cho Sales.
+    provider: mock
+    model: mock-v1
+    inboxTopics: []
+    outboxTopic: leads_raw
+    outputSchemaHint: '{"company": "...", "industry": "..."}'
+    schedule: { kind: daily, times: ["09:00", "14:00"] }
+
+  - id: sales_contact
+    name: "Sales · Tìm liên hệ"
+    room: "Phòng Sales"
+    role: >
+      Bạn là nhân viên Sales. Nhận lead từ Tìm nguồn, tìm email/SĐT liên hệ
+      phù hợp cho từng lead rồi chuyển tiếp cho Marketing để outreach.
+    provider: mock
+    model: mock-v1
+    # apiKeyEnv: ANTHROPIC_API_KEY   # bỏ comment nếu đổi provider: anthropic
+    inboxTopics: [leads_raw]
+    outboxTopic: leads_with_contact
+    outputSchemaHint: '{"company": "...", "email": "...", "phone": "..."}'
+    schedule: { kind: daily, times: ["11:00", "15:00"] }
+
+  - id: marketing_outreach
+    name: "Marketing · Outreach"
+    room: "Marketing"
+    role: >
+      Bạn là nhân viên Marketing. Khi có lead kèm thông tin liên hệ, soạn một
+      dòng tóm tắt email/ outreach sẽ gửi (không cần gửi thật trong demo này).
+    provider: mock
+    model: mock-v1
+    inboxTopics: [leads_with_contact]
+    outboxTopic: outreach_sent
+    outputSchemaHint: '{"company": "...", "message": "..."}'
+    schedule: { kind: on_inbox }
+
+  - id: purchasing
+    name: "Mua hàng"
+    room: "Mua hàng"
+    role: >
+      Bạn là nhân viên mua hàng. Mỗi ca kiểm tra tồn kho giả định và tạo yêu
+      cầu mua hàng nếu cần, chuyển cho Lễ tân xác nhận.
+    provider: mock
+    model: mock-v1
+    inboxTopics: []
+    outboxTopic: purchase_requests
+    outputSchemaHint: '{"item": "...", "quantity": 1}'
+    schedule: { kind: daily, times: ["10:00"] }
+
+  - id: reception
+    name: "Lễ tân"
+    room: "Lễ tân"
+    role: >
+      Bạn là lễ tân, trực liên tục. Khi có yêu cầu mua hàng hoặc outreach vừa
+      gửi, ghi nhận lại ngắn gọn để làm nhật ký chung của công ty.
+    provider: mock
+    model: mock-v1
+    inboxTopics: [purchase_requests, outreach_sent]
+    schedule: { kind: on_inbox }
