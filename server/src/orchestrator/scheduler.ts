@@ -11,7 +11,8 @@ export class Scheduler {
   constructor(
     private store: StateStore,
     private positions: PositionConfig[],
-    private tickSeconds: number
+    private tickSeconds: number,
+    private timezone?: string
   ) {}
 
   start() {
@@ -30,7 +31,7 @@ export class Scheduler {
   }
 
   private computeNextRunAt(p: PositionConfig): number | null {
-    if (p.schedule.kind === "daily") return nextDailyTimestamp(p.schedule.times);
+    if (p.schedule.kind === "daily") return nextDailyTimestamp(p.schedule.times, new Date(), this.timezone);
     if (p.schedule.kind === "interval") {
       const state = this.store.getPosition(p.id);
       const base = state?.lastRunAt ?? Date.now();

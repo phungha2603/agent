@@ -1,7 +1,7 @@
 export type Provider = "anthropic" | "openai" | "mock";
 
 export type Schedule =
-  | { kind: "daily"; times: string[] } // "HH:MM" 24h, local server time
+  | { kind: "daily"; times: string[] } // "HH:MM" 24h, in the company's timezone (see CompanyConfig.timezone)
   | { kind: "interval"; minutes: number }
   | { kind: "on_inbox" }; // runs as soon as something lands in its inbox
 
@@ -23,5 +23,10 @@ export interface PositionConfig {
 export interface CompanyConfig {
   name: string;
   tickSeconds: number;
+  /** IANA zone (e.g. "Asia/Ho_Chi_Minh") that "daily" schedule times are
+   * interpreted in. Omitted: falls back to the server process's own local
+   * time — fine for local dev, but on most PaaS hosts that's UTC, so a
+   * deployed company should usually set this explicitly. */
+  timezone?: string;
   positions: PositionConfig[];
 }

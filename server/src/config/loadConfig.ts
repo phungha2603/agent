@@ -19,5 +19,12 @@ export function loadConfig(configPath: string): CompanyConfig {
     ids.add(p.id);
   }
   if (!parsed.tickSeconds) parsed.tickSeconds = 15;
+  if (parsed.timezone) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: parsed.timezone });
+    } catch {
+      throw new Error(`"timezone" không hợp lệ trong config: ${parsed.timezone}`);
+    }
+  }
   return parsed;
 }

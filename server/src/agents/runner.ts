@@ -8,6 +8,15 @@ interface ParsedOutput {
   items: unknown[];
 }
 
+/** Safety circuit breaker: if a company's config accidentally wires positions
+ * into a cycle (A's outbox feeds B's inbox and vice versa), on_inbox
+ * positions would otherwise re-trigger each other indefinitely — cheap with
+ * the mock provider, but a real LLM provider would burn API spend non-stop.
+ * Each queue item's depth = 1 + the deepest inbox item that produced it; once
+ * a chain gets this deep it's almost certainly a loop, so new items past the
+ * limit are dropped instead of forwarded. */
+const MAX_CHAIN_DEPTH = 8;
+
 function buildUserPrompt(position: PositionConfig, inboxItems: { topic: string; payload: unknown }[]) {
   return [
     `Bạn đang đảm nhận vị trí "${position.name}" trong một công ty mô phỏng.`,
@@ -48,6 +57,7 @@ export async function runShift(store: StateStore, position: PositionConfig): Pro
     topic: row.topic,
     payload: JSON.parse(row.payload),
   }));
+  const nextDepth = rawInbox.length > 0 ? Math.max(...rawInbox.map((row) => row.depth)) + 1 : 0;
 
   try {
     const adapter = getAdapter(position);
@@ -56,8 +66,16 @@ export async function runShift(store: StateStore, position: PositionConfig): Pro
     const { summary, items } = parseModelOutput(text, position);
 
     if (position.outboxTopic) {
-      for (const item of items) {
-        store.pushToQueue(position.outboxTopic, item, position.id);
+      if (nextDepth > MAX_CHAIN_DEPTH) {
+        store.appendLog(
+          position.id,
+          `Đã bỏ ${items.length} mục: vượt quá độ sâu chuỗi tối đa (${MAX_CHAIN_DEPTH}) — kiểm tra cấu hình có vòng lặp inbox/outbox không.`,
+          "error"
+        );
+      } else {
+        for (const item of items) {
+          store.pushToQueue(position.outboxTopic, item, position.id, nextDepth);
+        }
       }
     }
 

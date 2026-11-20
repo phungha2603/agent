@@ -50,6 +50,17 @@ Hai vị trí "liên kết" với nhau đơn giản bằng cách vị trí A có
 `outboxTopic: X` và vị trí B có `X` trong `inboxTopics` — không có lệnh gọi
 trực tiếp giữa các agent, tất cả đi qua hàng đợi chung.
 
+Để tránh cấu hình lỡ tạo thành vòng khép kín (A đẩy việc cho B, B đẩy lại
+cho A, lặp vô hạn — tốn tiền API thật rất nhanh), mỗi item trong hàng đợi có
+`depth` tăng dần qua từng chặng; item ở `depth` vượt quá 8 sẽ bị bỏ và ghi
+log lỗi thay vì chuyển tiếp tiếp. Giới hạn này cố định trong code
+(`MAX_CHAIN_DEPTH` ở `agents/runner.ts`), không cấu hình qua YAML.
+
+Giờ `"HH:MM"` trong lịch `daily` được hiểu theo `timezone` (IANA, optional)
+khai báo ở cấp công ty — xem ví dụ `timezone: "Asia/Ho_Chi_Minh"` trong
+`positions.example.yaml`. Bỏ trường này thì giữ hành vi cũ: hiểu theo giờ
+local của tiến trình server (thường là UTC khi deploy PaaS).
+
 ## Build & chạy production
 
 ```bash
@@ -106,5 +117,9 @@ khác mặc định.
   nhỏ), đèn giao thông đổi màu xanh/vàng/đỏ theo chu kỳ thật, và thùng
   rác — toàn bộ chỉ là hoạt ảnh trang trí theo thời gian, không gắn với
   dữ liệu agent.
-- Lịch "daily"/"interval" chạy theo giờ hệ thống của server (không có
-  timezone riêng per-vị trí).
+- Lịch "interval" vẫn tính theo thời điểm chạy lần trước (`lastRunAt`), không
+  phụ thuộc timezone — chỉ `daily` mới dùng `timezone` của config.
+- SQLite đã bật `journal_mode = WAL` và `busy_timeout = 5000` (state/db.ts)
+  để chịu được việc Socket.IO đọc liên tục trong lúc scheduler/runner ghi,
+  nhưng vẫn chỉ phù hợp quy mô demo — không thiết kế cho nhiều instance
+  server cùng ghi một file SQLite.

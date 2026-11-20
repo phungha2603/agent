@@ -17,7 +17,7 @@ const PORT = Number(process.env.PORT || 3000);
 
 const config = loadConfig(CONFIG_PATH);
 const store = new StateStore(DB_PATH);
-const scheduler = new Scheduler(store, config.positions, config.tickSeconds);
+const scheduler = new Scheduler(store, config.positions, config.tickSeconds, config.timezone);
 
 function snapshot() {
   const positions = config.positions.map((p) => {

@@ -20,6 +20,7 @@ export interface QueueItem {
   createdAt: number;
   consumedBy: string | null;
   consumedAt: number | null;
+  depth: number;
 }
 
 export interface LogEntry {
@@ -37,6 +38,7 @@ export class StateStore {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    this.db.pragma("busy_timeout = 5000");
     this.init();
   }
 
@@ -56,7 +58,8 @@ export class StateStore {
         createdBy TEXT NOT NULL,
         createdAt INTEGER NOT NULL,
         consumedBy TEXT,
-        consumedAt INTEGER
+        consumedAt INTEGER,
+        depth INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_queue_topic_unconsumed
         ON queue (topic, consumedAt);
@@ -100,12 +103,12 @@ export class StateStore {
     return next;
   }
 
-  pushToQueue(topic: string, payload: unknown, createdBy: string) {
+  pushToQueue(topic: string, payload: unknown, createdBy: string, depth = 0) {
     this.db
       .prepare(
-        `INSERT INTO queue (topic, payload, createdBy, createdAt) VALUES (?, ?, ?, ?)`
+        `INSERT INTO queue (topic, payload, createdBy, createdAt, depth) VALUES (?, ?, ?, ?, ?)`
       )
-      .run(topic, JSON.stringify(payload), createdBy, Date.now());
+      .run(topic, JSON.stringify(payload), createdBy, Date.now(), depth);
   }
 
   countUnconsumed(topic: string): number {

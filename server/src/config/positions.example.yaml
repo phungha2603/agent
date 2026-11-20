@@ -5,6 +5,10 @@
 
 name: "Công ty mô phỏng"
 tickSeconds: 15
+# Giờ "HH:MM" trong các lịch "daily" bên dưới được hiểu theo múi giờ này,
+# bất kể server chạy ở đâu (vd hầu hết PaaS mặc định UTC). Bỏ dòng này nếu
+# muốn giữ hành vi cũ: hiểu theo giờ local của tiến trình server.
+timezone: "Asia/Ho_Chi_Minh"
 
 positions:
   - id: sourcing
