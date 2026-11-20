@@ -78,9 +78,13 @@ khác mặc định.
 - Agent hiện chỉ gọi LLM một lượt rồi parse JSON ra kết quả — chưa có
   tool-calling thật (web search, gửi email...). Có thể thêm bằng cách mở
   rộng `agents/adapter.ts` để truyền `tools` vào SDK của từng provider.
-- Dashboard vẽ văn phòng pixel-art bằng canvas (mỗi phòng một `<canvas>`):
-  nhân vật đi bộ vào bàn khi bắt đầu ca, gõ phím khi đang chạy, bung dấu
-  check khi xong, dấu X đỏ khi lỗi — toàn bộ chỉ dựa trên `status`/`lastRunAt`
-  từ WebSocket, không cần ảnh/sprite ngoài (xem `public/app.js`).
+- Dashboard vẽ cả công ty như một tầng duy nhất của một toà nhà (một
+  `<canvas>` liền mạch): các phòng ghép chung một mặt bằng, có bầu
+  trời/mây/nắng và dãy cửa sổ tầng trên phía trên, có phố/vỉa hè/cây/đèn
+  đường/cửa ra vào phía dưới. Nhân vật đi bộ vào bàn khi bắt đầu ca, gõ
+  phím khi đang chạy, bung dấu check khi xong, dấu X đỏ khi lỗi — toàn bộ
+  chỉ dựa trên `status`/`lastRunAt` từ WebSocket, không cần ảnh/sprite
+  ngoài (xem `public/app.js`). Nhiều phòng tự xuống hàng nếu công ty có
+  thêm vị trí, vẫn trong cùng một tầng.
 - Lịch "daily"/"interval" chạy theo giờ hệ thống của server (không có
   timezone riêng per-vị trí).

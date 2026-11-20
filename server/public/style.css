@@ -66,33 +66,22 @@ main {
 }
 
 @media (min-width: 900px) {
-  main { grid-template-columns: 2.2fr 1fr; align-items: start; }
+  main { grid-template-columns: 3fr 1fr; align-items: start; }
 }
 
-#rooms {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 14px;
-}
-
-.room {
+#building-wrap {
   background: var(--panel);
   border: 2px solid var(--border);
   border-radius: 10px;
-  padding: 10px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+#building {
   width: max-content;
 }
 
-.room h2 {
-  font-size: 12px;
-  margin: 0 0 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.room-canvas {
+#building-canvas {
   display: block;
   border-radius: 6px;
   image-rendering: pixelated;
