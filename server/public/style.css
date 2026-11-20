@@ -70,8 +70,9 @@ main {
 }
 
 #rooms {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 14px;
 }
 
@@ -79,60 +80,23 @@ main {
   background: var(--panel);
   border: 2px solid var(--border);
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px;
+  width: max-content;
 }
 
 .room h2 {
-  font-size: 13px;
-  margin: 0 0 10px;
+  font-size: 12px;
+  margin: 0 0 8px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
 }
 
-.position {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 8px;
-  background: color-mix(in srgb, var(--panel) 90%, var(--ink) 3%);
-}
-.position:last-child { margin-bottom: 0; }
-
-.position-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex: none;
-}
-.dot--waiting_shift { background: var(--waiting); }
-.dot--running { background: var(--running); box-shadow: 0 0 0 3px color-mix(in srgb, var(--running) 30%, transparent); animation: pulse 1.2s infinite; }
-.dot--done { background: var(--done); }
-.dot--error { background: var(--error); }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.position-meta {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.position-summary {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.4;
+.room-canvas {
+  display: block;
+  border-radius: 6px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 #activity {

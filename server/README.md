@@ -78,8 +78,9 @@ khác mặc định.
 - Agent hiện chỉ gọi LLM một lượt rồi parse JSON ra kết quả — chưa có
   tool-calling thật (web search, gửi email...). Có thể thêm bằng cách mở
   rộng `agents/adapter.ts` để truyền `tools` vào SDK của từng provider.
-- Dashboard đang là card UI đơn giản, chưa phải pixel-art animation như ảnh
-  tham khảo ban đầu — nhưng đã có đủ state + WebSocket real-time để build
-  lớp animation (canvas/sprite) lên trên mà không cần đổi backend.
+- Dashboard vẽ văn phòng pixel-art bằng canvas (mỗi phòng một `<canvas>`):
+  nhân vật đi bộ vào bàn khi bắt đầu ca, gõ phím khi đang chạy, bung dấu
+  check khi xong, dấu X đỏ khi lỗi — toàn bộ chỉ dựa trên `status`/`lastRunAt`
+  từ WebSocket, không cần ảnh/sprite ngoài (xem `public/app.js`).
 - Lịch "daily"/"interval" chạy theo giờ hệ thống của server (không có
   timezone riêng per-vị trí).
