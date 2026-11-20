@@ -85,6 +85,65 @@ function rand(lo, hi) {
   return lo + Math.random() * (hi - lo);
 }
 
+/* ---------- time of day: real local clock drives sky/lighting everywhere ---------- */
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+}
+function lerpColor(hexA, hexB, t) {
+  const a = hexToRgb(hexA),
+    b = hexToRgb(hexB);
+  return `rgb(${Math.round(lerp(a.r, b.r, t))},${Math.round(lerp(a.g, b.g, t))},${Math.round(lerp(a.b, b.b, t))})`;
+}
+/** Darkens a scenery color toward night as `dark` (0..1) rises, so every tile/
+ *  wall/desk dims together while glowing elements (lamps, lit windows, monitor
+ *  screens, character sprites) stay drawn in their own bright colors on top. */
+function shade(hex, dark) {
+  if (!dark || dark <= 0) return hex;
+  return lerpColor(hex, "#12141f", Math.min(1, dark) * 0.75);
+}
+
+// Keyframes across a 24h day: ban ngày nắng (bright) -> chiều mát (golden,
+// softer) -> tối (dark, lamps on). `dark` is 0=full daylight..1=full night;
+// `lamp` drives street lamps / lit windows / office ceiling lights.
+const DAY_KEYFRAMES = [
+  { h: 0, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
+  { h: 5, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
+  { h: 6.5, top: "#3c5478", bottom: "#f3a76a", dark: 0.45, lamp: 0.5 },
+  { h: 8, top: "#bfe3f5", bottom: "#e3f3fa", dark: 0, lamp: 0 },
+  { h: 16, top: "#bfe3f5", bottom: "#e3f3fa", dark: 0, lamp: 0 },
+  { h: 17.5, top: "#8fb3d6", bottom: "#ffcf8a", dark: 0.12, lamp: 0.12 },
+  { h: 18.8, top: "#3a4571", bottom: "#ff9566", dark: 0.5, lamp: 0.65 },
+  { h: 20, top: "#121a30", bottom: "#2a2f52", dark: 0.9, lamp: 0.95 },
+  { h: 24, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
+];
+
+function getTimeOfDay(nowMs) {
+  const d = new Date(nowMs);
+  const hour = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  let i = 0;
+  while (i < DAY_KEYFRAMES.length - 1 && DAY_KEYFRAMES[i + 1].h < hour) i++;
+  const a = DAY_KEYFRAMES[i];
+  const b = DAY_KEYFRAMES[Math.min(i + 1, DAY_KEYFRAMES.length - 1)];
+  const t = clamp((hour - a.h) / (b.h - a.h || 1), 0, 1);
+  const dark = lerp(a.dark, b.dark, t);
+  return {
+    hour,
+    skyTop: lerpColor(a.top, b.top, t),
+    skyBottom: lerpColor(a.bottom, b.bottom, t),
+    dark,
+    lamp: lerp(a.lamp, b.lamp, t),
+    sunAlpha: clamp(1 - dark * 1.35, 0, 1),
+    moonAlpha: clamp(dark * 1.35 - 0.25, 0, 1),
+  };
+}
+
+let _tod = null;
+function tod0() {
+  return _tod || { dark: 0, lamp: 0, sunAlpha: 1, moonAlpha: 0, skyTop: "#bfe3f5", skyBottom: "#e3f3fa" };
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -162,7 +221,7 @@ function drawFloorTile(ctx, gx, gy, color) {
   ctx.lineTo(p2.x, p2.y);
   ctx.lineTo(p3.x, p3.y);
   ctx.closePath();
-  ctx.fillStyle = color;
+  ctx.fillStyle = shade(color, tod0().dark);
   ctx.fill();
   ctx.strokeStyle = "rgba(0,0,0,0.07)";
   ctx.lineWidth = 1;
@@ -170,6 +229,7 @@ function drawFloorTile(ctx, gx, gy, color) {
 }
 
 function drawWallEdge(ctx, gx1, gy1, gx2, gy2, h, faceColor, topColor) {
+  const dark = tod0().dark;
   const b1 = isoPoint(gx1, gy1);
   const b2 = isoPoint(gx2, gy2);
   const t1 = { x: b1.x, y: b1.y - h };
@@ -180,7 +240,7 @@ function drawWallEdge(ctx, gx1, gy1, gx2, gy2, h, faceColor, topColor) {
   ctx.lineTo(t2.x, t2.y);
   ctx.lineTo(b2.x, b2.y);
   ctx.closePath();
-  ctx.fillStyle = faceColor;
+  ctx.fillStyle = shade(faceColor, dark);
   ctx.fill();
   ctx.strokeStyle = "rgba(0,0,0,0.15)";
   ctx.lineWidth = 1;
@@ -188,13 +248,17 @@ function drawWallEdge(ctx, gx1, gy1, gx2, gy2, h, faceColor, topColor) {
   ctx.beginPath();
   ctx.moveTo(t1.x, t1.y);
   ctx.lineTo(t2.x, t2.y);
-  ctx.strokeStyle = topColor;
+  ctx.strokeStyle = shade(topColor, dark);
   ctx.lineWidth = 2;
   ctx.stroke();
 }
 
 /** A small iso cuboid (desk, cart, bench…): top face + two shaded side faces. */
 function drawIsoBox(ctx, gx, gy, w, d, h, topColor, leftColor, rightColor) {
+  const dark = tod0().dark;
+  topColor = shade(topColor, dark);
+  leftColor = shade(leftColor, dark);
+  rightColor = shade(rightColor, dark);
   const top = {
     a: isoPoint(gx, gy),
     b: isoPoint(gx + w, gy),
@@ -514,6 +578,30 @@ function ctx0() {
   return _ctx;
 }
 
+/** A hanging ceiling lamp, off (plain fixture) by day and glowing warm once
+ *  `tod.lamp` rises in the evening — the office's own lights, distinct from
+ *  (but timed together with) the street lamps and lit windows outside. */
+function drawCeilingLight(cx, cy) {
+  const ctx = ctx0();
+  const tod = tod0();
+  ctx.fillStyle = shade("#2e2a22", tod.dark * 0.5);
+  ctx.fillRect(cx - 1.5, cy - 7, 3, 7);
+  if (tod.lamp > 0.12) {
+    const r = 20 + tod.lamp * 6;
+    const glow = ctx.createRadialGradient(cx, cy + 5, 1, cx, cy + 5, r);
+    glow.addColorStop(0, `rgba(255,228,170,${0.4 * tod.lamp})`);
+    glow.addColorStop(1, "rgba(255,228,170,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 5, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, cy + 5, 5, 0, Math.PI * 2);
+  ctx.fillStyle = tod.lamp > 0.12 ? "#ffe9b0" : shade("#4a443a", tod.dark * 0.5);
+  ctx.fill();
+}
+
 function buildFloorScene(positions) {
   const byRoom = groupByRoom(positions);
   const { rows, gridW, gridD } = layoutFloor(byRoom);
@@ -572,6 +660,11 @@ function drawFloorScene(ctx, scene, nowMs) {
     queue.push({
       key: x0 + y0 - 0.5,
       fn: () => drawWallEdge(ctx, x0, y0, x1, y0, WALL_H, "#857c6c", "#9c927f"),
+    });
+    const lampAnchor = tileCenter(x0 + (x1 - x0) / 2 - 0.5, y0 + 0.6);
+    queue.push({
+      key: x0 + y0 + 0.1,
+      fn: () => drawCeilingLight(lampAnchor.x, lampAnchor.y - WALL_H - 4),
     });
   }
 
@@ -650,21 +743,33 @@ const GROUND_D = 4; // 0: building base, 1: sidewalk, 2-3: road
 
 function drawLampPost(gx, gy) {
   const ctx = ctx0();
+  const tod = tod0();
   const base = tileCenter(gx, gy);
-  ctx.fillStyle = "#3a362f";
+  ctx.fillStyle = shade("#3a362f", tod.dark);
   ctx.fillRect(base.x - 1.5, base.y - 46, 3, 46);
+  if (tod.lamp > 0.1) {
+    const r = 14 + tod.lamp * 5;
+    const glow = ctx.createRadialGradient(base.x, base.y - 50, 1, base.x, base.y - 50, r);
+    glow.addColorStop(0, `rgba(255,221,140,${0.55 * tod.lamp})`);
+    glow.addColorStop(1, "rgba(255,221,140,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(base.x, base.y - 50, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.beginPath();
   ctx.arc(base.x, base.y - 50, 5, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffdd88";
+  ctx.fillStyle = tod.lamp > 0.1 ? "#ffe49a" : shade("#8a8372", tod.dark);
   ctx.fill();
 }
 
 function drawTree(gx, gy) {
   const ctx = ctx0();
+  const dark = tod0().dark;
   const base = tileCenter(gx, gy);
-  ctx.fillStyle = "#6b4a2d";
+  ctx.fillStyle = shade("#6b4a2d", dark);
   ctx.fillRect(base.x - 3, base.y - 26, 6, 26);
-  ctx.fillStyle = "#5f8c53";
+  ctx.fillStyle = shade("#5f8c53", dark);
   ctx.beginPath();
   ctx.arc(base.x, base.y - 32, 15, 0, Math.PI * 2);
   ctx.fill();
@@ -688,7 +793,7 @@ function drawVendorCart(gx, gy, nowMs) {
   ctx.lineTo(poleTop.x, poleTop.y);
   ctx.stroke();
   const sway = Math.sin(nowMs / 900) * 2;
-  ctx.fillStyle = "#c0504a";
+  ctx.fillStyle = shade("#c0504a", tod0().dark);
   ctx.beginPath();
   ctx.moveTo(poleTop.x - 24 + sway, poleTop.y + 8);
   ctx.lineTo(poleTop.x + 24 + sway, poleTop.y + 8);
@@ -742,7 +847,7 @@ function drawGroundScene(ctx, gridW, nowMs) {
     fn: () => {
       drawIsoBox(ctx, doorX - 0.35, -0.02, 0.9, 0.3, 26, "#3d372c", "#2a251e", "#332e25");
       const p = tileCenter(doorX + 0.1, 0.1);
-      ctx.fillStyle = "#86c6e8";
+      ctx.fillStyle = tod0().lamp > 0.2 ? `rgba(255,221,150,${0.6 + 0.3 * tod0().lamp})` : "#86c6e8";
       ctx.fillRect(p.x - 7, p.y - 34, 6, 15);
       ctx.fillRect(p.x + 1, p.y - 34, 6, 15);
     },
@@ -801,18 +906,47 @@ const SKY_H = 58;
 const ROOF_H = 16;
 const WIN_STRIP_H = 24;
 
-function drawSky(ctx, w, nowMs) {
+function drawSky(ctx, w, nowMs, tod) {
   const grad = ctx.createLinearGradient(0, 0, 0, SKY_H);
-  grad.addColorStop(0, "#bfe3f5");
-  grad.addColorStop(1, "#e3f3fa");
+  grad.addColorStop(0, tod.skyTop);
+  grad.addColorStop(1, tod.skyBottom);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, SKY_H);
-  ctx.fillStyle = "rgba(255,221,120,0.9)";
-  ctx.beginPath();
-  ctx.arc(w - 36, 22, 13, 0, Math.PI * 2);
-  ctx.fill();
+
+  if (tod.dark > 0.45) {
+    const starAlpha = clamp((tod.dark - 0.45) * 1.8, 0, 1);
+    for (let i = 0; i < 18; i++) {
+      const sx = (hashStr("star" + i) % 997) / 997 * w;
+      const sy = (hashStr("stary" + i) % 401) / 401 * (SKY_H - 10) + 4;
+      const twinkle = 0.5 + 0.5 * Math.sin(nowMs / 900 + i * 7);
+      ctx.fillStyle = `rgba(255,255,255,${starAlpha * (0.4 + 0.5 * twinkle)})`;
+      ctx.fillRect(sx, sy, 1.6, 1.6);
+    }
+  }
+
+  if (tod.sunAlpha > 0.01) {
+    ctx.fillStyle = `rgba(255,221,120,${0.9 * tod.sunAlpha})`;
+    ctx.beginPath();
+    ctx.arc(w - 36, 22, 13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (tod.moonAlpha > 0.01) {
+    ctx.fillStyle = `rgba(233,237,245,${tod.moonAlpha})`;
+    ctx.beginPath();
+    ctx.arc(w - 36, 22, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(180,190,210,${0.5 * tod.moonAlpha})`;
+    ctx.beginPath();
+    ctx.arc(w - 40, 18, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(w - 33, 26, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const cloudTint = tod.dark > 0.5 ? "rgba(130,140,170,0.55)" : tod.dark > 0.15 ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.85)";
   const drift = (nowMs / 60000) % 1;
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillStyle = cloudTint;
   for (let i = 0; i < 3; i++) {
     const cx = ((drift + i / 3) % 1) * (w + 80) - 40;
     drawCloud(ctx, cx, 16 + i * 12);
@@ -826,16 +960,17 @@ function drawCloud(ctx, cx, cy) {
   ctx.fill();
 }
 function drawRoofBand(ctx, y, w) {
-  ctx.fillStyle = "#6b6358";
+  const dark = tod0().dark;
+  ctx.fillStyle = shade("#6b6358", dark);
   ctx.fillRect(0, y, w, ROOF_H);
-  ctx.fillStyle = "#847c6e";
+  ctx.fillStyle = shade("#847c6e", dark);
   ctx.fillRect(0, y, w, 3);
-  ctx.fillStyle = "#4f483f";
+  ctx.fillStyle = shade("#4f483f", dark);
   ctx.fillRect(w * 0.25, y - 6, 10, 6);
   ctx.fillRect(w * 0.6, y - 9, 7, 9);
 }
-function drawWindowStrip(ctx, y, w, seedOffset, nowMs) {
-  ctx.fillStyle = "#857c6c";
+function drawWindowStrip(ctx, y, w, seedOffset, nowMs, tod) {
+  ctx.fillStyle = shade("#857c6c", tod.dark);
   ctx.fillRect(0, y, w, WIN_STRIP_H);
   const winW = 16,
     gap = 10;
@@ -843,9 +978,10 @@ function drawWindowStrip(ctx, y, w, seedOffset, nowMs) {
     i = 0;
   while (x + winW < w - 6) {
     const seed = hashStr(`w${seedOffset}-${i}`);
-    const blink = Math.sin(nowMs / 1400 + seed) > 0.85;
-    const lit = seed % 3 !== 0 || blink;
-    ctx.fillStyle = lit ? "rgba(255,221,140,0.9)" : "rgba(40,36,30,0.55)";
+    const base = (seed % 100) / 100; // stable per-window threshold
+    const blink = Math.sin(nowMs / 1400 + seed) > 0.9;
+    const lit = base < tod.lamp * 0.85 + 0.05 || blink;
+    ctx.fillStyle = lit ? `rgba(255,221,140,${0.55 + 0.35 * tod.lamp})` : shade("#96b4c3", tod.dark * 0.8 + 0.2);
     ctx.fillRect(x, y + 5, winW, WIN_STRIP_H - 10);
     x += winW + gap;
     i++;
@@ -886,6 +1022,8 @@ function tick() {
   if (latestState) {
     ensureCanvas();
     const nowMs = Date.now();
+    _tod = getTimeOfDay(nowMs);
+    const tod = _tod;
     const floorScene = buildFloorScene(latestState.positions);
     const totalW = Math.max(floorScene.bounds.width, isoBounds(floorScene.gridW, GROUND_D, 0, 0).width) + 20;
     const totalH = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height + WIN_STRIP_H + isoBounds(floorScene.gridW, GROUND_D, 70, 10).height;
@@ -897,9 +1035,9 @@ function tick() {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawSky(ctx, canvas.width, nowMs);
+    drawSky(ctx, canvas.width, nowMs, tod);
     drawRoofBand(ctx, SKY_H, canvas.width);
-    drawWindowStrip(ctx, SKY_H + ROOF_H, canvas.width, 1, nowMs);
+    drawWindowStrip(ctx, SKY_H + ROOF_H, canvas.width, 1, nowMs, tod);
 
     const floorX = (canvas.width - floorScene.bounds.width) / 2;
     ctx.save();
@@ -908,7 +1046,7 @@ function tick() {
     ctx.restore();
 
     const yAfterFloor = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height;
-    drawWindowStrip(ctx, yAfterFloor, canvas.width, 2, nowMs);
+    drawWindowStrip(ctx, yAfterFloor, canvas.width, 2, nowMs, tod);
     drawFloorPlaque(ctx, 6, SKY_H + ROOF_H + 3);
 
     const groundBounds = isoBounds(floorScene.gridW, GROUND_D, 70, 10);

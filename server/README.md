@@ -92,5 +92,10 @@ khác mặc định.
   dựa trên `status`/`lastRunAt` từ WebSocket, không cần ảnh/sprite ngoài.
   Nhiều phòng tự xuống hàng nếu công ty có
   thêm vị trí, vẫn trong cùng một tầng.
+- Cảnh vật đổi theo giờ thực của trình duyệt người xem (không phải giờ
+  server): nắng ban ngày, ngả vàng lúc chiều, tối hẳn ban đêm có
+  sao/trăng — bầu trời, cửa sổ toà nhà, đèn đường và đèn trần văn phòng
+  đều chuyển cùng lúc theo một "độ tối" chung (`getTimeOfDay()` trong
+  `public/app.js`), nên nội thất và cảnh ngoài trời luôn khớp nhau.
 - Lịch "daily"/"interval" chạy theo giờ hệ thống của server (không có
   timezone riêng per-vị trí).
