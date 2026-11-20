@@ -408,6 +408,13 @@ function drawPerson(ctx, cx, groundY, phase, o) {
 /* ---------- office floor: rooms, desks, people (wander + chat while idle) ---------- */
 
 const ROOM_D = 3; // 0: front aisle, 1: desk row, 2: back area
+// Gap (in tiles) left as plain hallway between stacked room-rows. Rooms are
+// flat billboards sorted purely by gx+gy, not real 3D occluders — with no
+// gap, a character wandering to the back of one room and a character at the
+// front of the room directly "south" of it sit close enough on screen that
+// one sprite can swallow the other whole even though a wall sits between
+// their rooms. The gap keeps that worst case to a partial, readable overlap.
+const ROW_GAP = 1;
 const WANDER_ROWS = [0, 2];
 const DESK_H = 16;
 const WALL_H = 36;
@@ -442,10 +449,10 @@ function layoutFloor(byRoom) {
     positions,
     w: positions.length * 2 + 1,
     gx: (i % cols) * cellW,
-    gy: Math.floor(i / cols) * ROOM_D,
+    gy: Math.floor(i / cols) * (ROOM_D + ROW_GAP),
   }));
 
-  return { cellsFlat, gridW: cols * cellW, gridD: rows * ROOM_D };
+  return { cellsFlat, gridW: cols * cellW, gridD: rows * ROOM_D + (rows - 1) * ROW_GAP };
 }
 
 function ensureAnim(id, deskTile) {
@@ -682,15 +689,15 @@ function drawFloorScene(ctx, scene, nowMs) {
 
   const queue = [];
 
-  // floor tiles (+ hallway filler for rows shorter than the widest one)
-  for (let gy = 0; gy < gridD; gy += ROOM_D) {
+  // floor tiles — every tile in the grid, including hallway filler for rows
+  // shorter than the widest room and for the ROW_GAP strip between stacked
+  // room-rows (both just read as plain floor, no room color/walls).
+  for (let gy = 0; gy < gridD; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
-      const cell = cellsFlat.find((c) => c.gy === gy && gx >= c.gx && gx < c.gx + c.w);
+      const cell = cellsFlat.find((c) => gx >= c.gx && gx < c.gx + c.w && gy >= c.gy && gy < c.gy + ROOM_D);
       const color = cell ? pick(PALETTE.floor, hashStr(cell.room)) : "#e4ded0";
-      for (let ly = 0; ly < ROOM_D; ly++) {
-        const key = gx + gy + ly;
-        queue.push({ key, fn: ((gx_, gy_, color_) => () => drawFloorTile(ctx, gx_, gy_, color_))(gx, gy + ly, color) });
-      }
+      const key = gx + gy;
+      queue.push({ key, fn: ((gx_, gy_, color_) => () => drawFloorTile(ctx, gx_, gy_, color_))(gx, gy, color) });
     }
   }
 
@@ -1155,13 +1162,95 @@ function drawFloorPlaque(ctx, x, y) {
 let canvas = null;
 let ctx = null;
 let latestState = null;
+let wrapEl = null;
+
+// Mouse-driven camera (scroll to zoom, left-drag to pan) over a fixed-size
+// viewport (#building-wrap, overflow:hidden). Applied as a CSS transform on
+// the canvas element itself, never touching its drawing coordinate system.
+// `userSet` tracks whether the person has taken the wheel/drag — until they
+// do, the camera keeps auto-fitting to the whole scene on every resize/data
+// update, the same passive behavior the plain CSS auto-fit used to give.
+const camera = { x: 0, y: 0, scale: 1, userSet: false };
+
+function clampScale(s) {
+  return Math.min(4, Math.max(0.25, s));
+}
+
+function applyCamera() {
+  canvas.style.transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`;
+}
+
+function fitCamera() {
+  if (!wrapEl || !canvas.width || !canvas.height) return;
+  const wrapW = wrapEl.clientWidth;
+  const wrapH = wrapEl.clientHeight;
+  if (!wrapW || !wrapH) return;
+  // Never upscale past native pixel size (would blur the pixel art) — only
+  // shrink to fit when the scene is bigger than the viewport.
+  camera.scale = clampScale(Math.min(1, wrapW / canvas.width, wrapH / canvas.height));
+  camera.x = (wrapW - canvas.width * camera.scale) / 2;
+  camera.y = Math.max(0, (wrapH - canvas.height * camera.scale) / 2);
+  applyCamera();
+}
+
+function setupCamera() {
+  let dragging = false;
+  let last = { x: 0, y: 0 };
+
+  wrapEl.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const rect = wrapEl.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const localX = (mx - camera.x) / camera.scale;
+      const localY = (my - camera.y) / camera.scale;
+      const newScale = clampScale(camera.scale * Math.exp(-e.deltaY * 0.001));
+      camera.x = mx - localX * newScale;
+      camera.y = my - localY * newScale;
+      camera.scale = newScale;
+      camera.userSet = true;
+      applyCamera();
+    },
+    { passive: false },
+  );
+
+  wrapEl.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    dragging = true;
+    last = { x: e.clientX, y: e.clientY };
+    wrapEl.classList.add("is-dragging");
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    camera.x += e.clientX - last.x;
+    camera.y += e.clientY - last.y;
+    last = { x: e.clientX, y: e.clientY };
+    camera.userSet = true;
+    applyCamera();
+  });
+  window.addEventListener("mouseup", () => {
+    dragging = false;
+    wrapEl.classList.remove("is-dragging");
+  });
+  wrapEl.addEventListener("dblclick", () => {
+    camera.userSet = false;
+    fitCamera();
+  });
+  window.addEventListener("resize", () => {
+    if (!camera.userSet) fitCamera();
+  });
+}
 
 function ensureCanvas() {
   if (canvas) return;
+  wrapEl = document.getElementById("building-wrap");
   canvas = document.createElement("canvas");
   canvas.id = "building-canvas";
   buildingEl.appendChild(canvas);
   ctx = canvas.getContext("2d");
+  setupCamera();
 }
 
 function render(state) {
@@ -1187,6 +1276,7 @@ function tick() {
     if (canvas.width !== Math.ceil(totalW) || canvas.height !== Math.ceil(totalH)) {
       canvas.width = Math.ceil(totalW);
       canvas.height = Math.ceil(totalH);
+      if (!camera.userSet) fitCamera();
     }
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, canvas.width, canvas.height);

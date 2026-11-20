@@ -130,9 +130,14 @@ việc từ hộp thư đến, các item đó được trả lại hàng đợi 
 sau thay vì mất — tối đa 3 lần, sau đó mới thực sự bỏ và ghi log lỗi rõ
 ràng để biết vị trí nào đang gặp vấn đề.
 
-Dashboard tự co lại vừa khung hình qua CSS (`max-width` trên canvas) khi
-công ty có nhiều phòng hơn, không phóng to quá kích thước gốc (tránh bị mờ)
-— không có thao tác kéo/phóng bằng chuột, dashboard vẫn chỉ để xem.
+Dashboard hiển thị trong một khung nhìn cố định (`#building-wrap`, cuộn
+nội bộ không lộ ra ngoài trang) và tự co vừa toàn bộ cảnh (toà nhà + phố)
+khi tải lần đầu hoặc khi đổi kích thước cửa sổ — không phóng to quá kích
+thước gốc của canvas (tránh bị mờ). Dùng cuộn chuột để phóng to/thu nhỏ
+(zoom quanh đúng vị trí con trỏ), giữ chuột trái và kéo để di chuyển khung
+nhìn; nhấp đúp để quay lại trạng thái vừa khung ban đầu. Một khi người dùng
+đã tự zoom/kéo, dashboard thôi tự động co lại nữa (tôn trọng góc nhìn họ
+chọn) cho đến khi họ nhấp đúp để reset.
 
 ## Giới hạn hiện tại (biết trước để mở rộng)
 

@@ -74,22 +74,31 @@ main {
   border: 2px solid var(--border);
   border-radius: 10px;
   padding: 12px;
-  /* Fallback only: the canvas below scales itself to fit via max-width, so
-     this shouldn't normally trigger — kept in case a future layout change
-     ever produces something wider than the available space again. */
-  overflow-x: auto;
+  position: relative;
+  overflow: hidden;
+  /* Fixed viewport the canvas is panned/zoomed inside of — scroll wheel
+     zooms, left-click-drag pans. Starts auto-fit to the whole floor+street
+     scene (same idea as the old passive CSS auto-fit) and stays that way
+     until the user explicitly interacts; double-click resets the view. */
+  height: min(70vh, 640px);
+  min-height: 360px;
+  cursor: grab;
+  touch-action: none;
+}
+
+#building-wrap.is-dragging {
+  cursor: grabbing;
 }
 
 #building-canvas {
-  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
   border-radius: 6px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  /* Auto-fit: shrinks a large company's floor to fit the viewport without
-     any pan/zoom interaction, but never upscales a small one past its
-     native pixel size (which would blur the pixel art). */
-  max-width: 100%;
-  height: auto;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 #activity {
