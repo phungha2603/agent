@@ -84,6 +84,40 @@ Mount `/app/data` ra volume để dữ liệu (SQLite) không mất khi containe
 động lại. Đổi `COMPANY_CONFIG` qua biến môi trường nếu muốn dùng file config
 khác mặc định.
 
+Server bắt cả `SIGINT` lẫn `SIGTERM`: khi dừng, nó ngừng nhận ca mới, đợi ca
+đang chạy dở xong (tối đa 10s), rồi mới checkpoint SQLite và thoát — tránh
+hỏng file `.db-wal` khi redeploy. `docker stop` mặc định chỉ đợi 10s trước
+khi gửi SIGKILL; nếu vị trí nào đó dùng model thật có thể chạy lâu hơn, tăng
+thời gian chờ:
+
+```bash
+docker stop --time 30 agent-company
+# hoặc trong docker-compose.yml: stop_grace_period: 30s
+```
+
+Nếu đặt domain + reverse proxy trước app (khuyến nghị cho production), xem
+`nginx.conf.example` — phần quan trọng nhất là header `Upgrade`/`Connection`
+để Socket.IO không bị rớt kết nối qua proxy.
+
+## Khi mở rộng cấu hình (nhiều vị trí/phòng ban hơn)
+
+Server kiểm tra config ngay lúc khởi động (`config/loadConfig.ts`):
+- **Cảnh báo** (không dừng server) nếu một `outboxTopic` không có vị trí nào
+  đọc, hoặc một `inboxTopics` không có vị trí nào ghi — thường là dấu hiệu
+  gõ nhầm tên topic lúc nối các vị trí mới với nhau.
+- **Dừng server** (lỗi rõ ràng, không chạy ngầm rồi lỗi từng ca) nếu một vị
+  trí dùng provider khác "mock" mà biến môi trường `apiKeyEnv` tương ứng
+  chưa được set.
+
+Nếu một ca lỗi (mạng, rate limit, provider gián đoạn...) sau khi đã nhận
+việc từ hộp thư đến, các item đó được trả lại hàng đợi để thử lại ở lượt
+sau thay vì mất — tối đa 3 lần, sau đó mới thực sự bỏ và ghi log lỗi rõ
+ràng để biết vị trí nào đang gặp vấn đề.
+
+Dashboard tự co lại vừa khung hình qua CSS (`max-width` trên canvas) khi
+công ty có nhiều phòng hơn, không phóng to quá kích thước gốc (tránh bị mờ)
+— không có thao tác kéo/phóng bằng chuột, dashboard vẫn chỉ để xem.
+
 ## Giới hạn hiện tại (biết trước để mở rộng)
 
 - Agent hiện chỉ gọi LLM một lượt rồi parse JSON ra kết quả — chưa có

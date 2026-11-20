@@ -7,6 +7,7 @@ import { nextDailyTimestamp } from "./time";
 export class Scheduler {
   private timer?: NodeJS.Timeout;
   private runningIds = new Set<string>();
+  private inFlight = new Map<string, Promise<void>>();
 
   constructor(
     private store: StateStore,
@@ -28,6 +29,18 @@ export class Scheduler {
 
   stop() {
     if (this.timer) clearInterval(this.timer);
+  }
+
+  /** Waits for any shifts already in flight to finish, up to `timeoutMs` —
+   * used on shutdown so a SIGTERM mid-shift doesn't just abandon it. Call
+   * `stop()` first so no new shifts start while draining. */
+  async drain(timeoutMs = 10_000): Promise<void> {
+    const pending = [...this.inFlight.values()];
+    if (pending.length === 0) return;
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 
   private computeNextRunAt(p: PositionConfig): number | null {
@@ -56,13 +69,15 @@ export class Scheduler {
       if (!due) continue;
 
       this.runningIds.add(p.id);
-      runShift(this.store, p)
+      const run = runShift(this.store, p)
         .catch((e) => console.error(`Lỗi khi chạy vị trí ${p.id}:`, e))
         .finally(() => {
           this.runningIds.delete(p.id);
+          this.inFlight.delete(p.id);
           this.store.updatePosition(p.id, { nextRunAt: this.computeNextRunAt(p) });
           bus.emit(EVT_STATE_CHANGED);
         });
+      this.inFlight.set(p.id, run);
     }
   }
 }

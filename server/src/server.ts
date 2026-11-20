@@ -69,7 +69,20 @@ httpServer.listen(PORT, () => {
   scheduler.start();
 });
 
-process.on("SIGINT", () => {
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[company] Nhận ${signal}, đang dừng (chờ ca đang chạy xong, tối đa 10s)...`);
   scheduler.stop();
-  process.exit(0);
-});
+  await scheduler.drain(10_000);
+  store.checkpoint();
+  store.close();
+  httpServer.close(() => process.exit(0));
+  // In case something (an open socket, a stuck connection) keeps the server
+  // from closing cleanly, don't let the process hang past Docker's own stop
+  // timeout — just exit; checkpoint()/close() above already ran.
+  setTimeout(() => process.exit(0), 3_000).unref();
+}
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

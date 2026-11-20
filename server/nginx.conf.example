@@ -1,0 +1,29 @@
+# Mẫu reverse proxy Nginx cho app này — đổi server_name rồi copy vào
+# /etc/nginx/sites-available/, symlink sang sites-enabled/, reload nginx.
+# Phần quan trọng nhất là 2 dòng Upgrade/Connection: thiếu chúng thì
+# WebSocket (Socket.IO) sẽ rớt kết nối liên tục qua proxy.
+
+server {
+    listen 80;
+    server_name your-domain.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # Bắt buộc để Socket.IO (WebSocket) hoạt động qua proxy.
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket có thể giữ kết nối lâu hơn HTTP thường.
+        proxy_read_timeout 86400;
+    }
+}
+
+# Sau khi trỏ domain + nginx chạy ổn, dùng certbot để bật HTTPS:
+#   sudo certbot --nginx -d your-domain.example.com

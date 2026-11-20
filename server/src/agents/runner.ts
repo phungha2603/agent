@@ -17,6 +17,12 @@ interface ParsedOutput {
  * limit are dropped instead of forwarded. */
 const MAX_CHAIN_DEPTH = 8;
 
+/** If a shift fails after already consuming inbox items (network error, rate
+ * limit, provider outage...), those items must not just vanish — they're put
+ * back as unconsumed so a later shift retries them, up to this many times
+ * before being left consumed (dropped) with a clear log line explaining why. */
+const MAX_RETRIES = 3;
+
 function buildUserPrompt(position: PositionConfig, inboxItems: { topic: string; payload: unknown }[]) {
   return [
     `Bạn đang đảm nhận vị trí "${position.name}" trong một công ty mô phỏng.`,
@@ -87,7 +93,17 @@ export async function runShift(store: StateStore, position: PositionConfig): Pro
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    store.appendLog(position.id, `Lỗi: ${message}`, "error");
+    let retryNote = "";
+    if (rawInbox.length > 0) {
+      const { requeued, dropped } = store.requeueOrDrop(rawInbox, MAX_RETRIES);
+      retryNote =
+        requeued > 0 && dropped > 0
+          ? ` (${requeued} mục sẽ thử lại, ${dropped} mục đã bỏ sau ${MAX_RETRIES} lần lỗi)`
+          : requeued > 0
+            ? ` (${requeued} mục sẽ thử lại ở lượt sau)`
+            : ` (${dropped} mục đã bỏ sau ${MAX_RETRIES} lần lỗi)`;
+    }
+    store.appendLog(position.id, `Lỗi: ${message}${retryNote}`, "error");
     store.updatePosition(position.id, {
       status: "error",
       lastRunAt: Date.now(),

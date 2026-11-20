@@ -21,6 +21,7 @@ export interface QueueItem {
   consumedBy: string | null;
   consumedAt: number | null;
   depth: number;
+  retryCount: number;
 }
 
 export interface LogEntry {
@@ -59,7 +60,8 @@ export class StateStore {
         createdAt INTEGER NOT NULL,
         consumedBy TEXT,
         consumedAt INTEGER,
-        depth INTEGER NOT NULL DEFAULT 0
+        depth INTEGER NOT NULL DEFAULT 0,
+        retryCount INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_queue_topic_unconsumed
         ON queue (topic, consumedAt);
@@ -153,5 +155,40 @@ export class StateStore {
     return this.db
       .prepare(`SELECT * FROM logs ORDER BY id DESC LIMIT ?`)
       .all(limit) as LogEntry[];
+  }
+
+  /** Called when a shift fails after already consuming its inbox items: puts
+   * each one back as unconsumed (so a later shift retries it) unless it's
+   * already been retried `maxRetries` times, in which case it's left
+   * consumed — effectively dropped, with the caller expected to log why. */
+  requeueOrDrop(items: QueueItem[], maxRetries: number): { requeued: number; dropped: number } {
+    let requeued = 0;
+    let dropped = 0;
+    const requeue = this.db.prepare(
+      `UPDATE queue SET consumedBy = NULL, consumedAt = NULL, retryCount = retryCount + 1 WHERE id = ?`
+    );
+    const tx = this.db.transaction((rows: QueueItem[]) => {
+      for (const row of rows) {
+        if (row.retryCount < maxRetries) {
+          requeue.run(row.id);
+          requeued++;
+        } else {
+          dropped++;
+        }
+      }
+    });
+    tx(items);
+    return { requeued, dropped };
+  }
+
+  /** Flushes the WAL file into the main database file. Called during
+   * shutdown so a redeploy/restart never has to recover from a half-written
+   * .db-wal. */
+  checkpoint() {
+    this.db.pragma("wal_checkpoint(TRUNCATE)");
+  }
+
+  close() {
+    this.db.close();
   }
 }

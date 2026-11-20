@@ -74,11 +74,10 @@ main {
   border: 2px solid var(--border);
   border-radius: 10px;
   padding: 12px;
+  /* Fallback only: the canvas below scales itself to fit via max-width, so
+     this shouldn't normally trigger — kept in case a future layout change
+     ever produces something wider than the available space again. */
   overflow-x: auto;
-}
-
-#building {
-  width: max-content;
 }
 
 #building-canvas {
@@ -86,6 +85,11 @@ main {
   border-radius: 6px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  /* Auto-fit: shrinks a large company's floor to fit the viewport without
+     any pan/zoom interaction, but never upscales a small one past its
+     native pixel size (which would blur the pixel art). */
+  max-width: 100%;
+  height: auto;
 }
 
 #activity {
