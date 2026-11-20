@@ -90,12 +90,21 @@ khác mặc định.
   nhiên 2 người rảnh cùng phòng đứng lại nói chuyện (bong bóng thoại) rồi
   tự giải tán — toàn bộ hành vi này chạy ở client (`public/app.js`), chỉ
   dựa trên `status`/`lastRunAt` từ WebSocket, không cần ảnh/sprite ngoài.
-  Nhiều phòng tự xuống hàng nếu công ty có
-  thêm vị trí, vẫn trong cùng một tầng.
+  Các phòng xếp thành lưới hàng×cột gần vuông (không phải một hàng dài),
+  toàn bộ mặt bằng bao trong một viền chung (tường bắc/tây đầy đủ, viền
+  thấp phía nam/đông) nên đọc như một không gian chung được bao kín, dù
+  bên trong vẫn chia theo từng phòng ban.
 - Cảnh vật đổi theo giờ thực của trình duyệt người xem (không phải giờ
   server): nắng ban ngày, ngả vàng lúc chiều, tối hẳn ban đêm có
   sao/trăng — bầu trời, cửa sổ toà nhà, đèn đường và đèn trần văn phòng
   đều chuyển cùng lúc theo một "độ tối" chung (`getTimeOfDay()` trong
-  `public/app.js`), nên nội thất và cảnh ngoài trời luôn khớp nhau.
+  `public/app.js`), nên nội thất và cảnh ngoài trời luôn khớp nhau. Một
+  đồng hồ kim treo trên tường bên trong không gian chung chạy đúng theo
+  giờ thực đó, cùng nguồn giờ với lịch chạy ca của agent.
+- Bên dưới toà nhà, ngoài gian hàng rong và ghế đá trò chuyện, còn có 2
+  người đi bộ dạo qua lại trên vỉa hè (một người dắt theo một chú chó
+  nhỏ), đèn giao thông đổi màu xanh/vàng/đỏ theo chu kỳ thật, và thùng
+  rác — toàn bộ chỉ là hoạt ảnh trang trí theo thời gian, không gắn với
+  dữ liệu agent.
 - Lịch "daily"/"interval" chạy theo giờ hệ thống của server (không có
   timezone riêng per-vị trí).

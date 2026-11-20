@@ -409,9 +409,9 @@ function drawPerson(ctx, cx, groundY, phase, o) {
 
 const ROOM_D = 3; // 0: front aisle, 1: desk row, 2: back area
 const WANDER_ROWS = [0, 2];
-const MAX_ROW_TILES = 26;
 const DESK_H = 16;
 const WALL_H = 36;
+const TRIM_H = 8; // low outer edge on the open sides, so the floor still reads as one enclosed rectangle
 const WALK_SPEED = 1.7; // tiles / second
 
 const anim = new Map(); // position id -> behavior state
@@ -426,26 +426,26 @@ function groupByRoom(positions) {
   return map;
 }
 
-/** Packs rooms into grid rows (tile units) so the floor stays readable no
- *  matter how many positions the company config has. */
+/** Packs rooms into a roughly square grid of rows x cols (rather than one
+ *  long strip) so the whole floor reads as a rectangle, not a vertical/
+ *  diagonal line, no matter how many positions the company config has. */
 function layoutFloor(byRoom) {
-  const rows = [];
-  let current = [];
-  let currentW = 0;
-  for (const [room, positions] of byRoom) {
-    const w = positions.length * 2 + 1;
-    if (current.length > 0 && currentW + w > MAX_ROW_TILES) {
-      rows.push({ cells: current, w: currentW });
-      current = [];
-      currentW = 0;
-    }
-    current.push({ room, positions, w, gx: currentW });
-    currentW += w;
-  }
-  if (current.length) rows.push({ cells: current, w: currentW });
-  const gridW = rows.reduce((m, r) => Math.max(m, r.w), 0);
-  rows.forEach((r, i) => (r.gy = i * ROOM_D));
-  return { rows, gridW, gridD: rows.length * ROOM_D };
+  const entries = [...byRoom];
+  const n = Math.max(1, entries.length);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.ceil(n / cols);
+  let cellW = 3;
+  for (const [, positions] of entries) cellW = Math.max(cellW, positions.length * 2 + 1);
+
+  const cellsFlat = entries.map(([room, positions], i) => ({
+    room,
+    positions,
+    w: positions.length * 2 + 1,
+    gx: (i % cols) * cellW,
+    gy: Math.floor(i / cols) * ROOM_D,
+  }));
+
+  return { cellsFlat, gridW: cols * cellW, gridD: rows * ROOM_D };
 }
 
 function ensureAnim(id, deskTile) {
@@ -602,24 +602,71 @@ function drawCeilingLight(cx, cy) {
   ctx.fill();
 }
 
+/** An analog clock on the shared space's wall, always showing the viewer's
+ *  real local time — the same clock the day/night sky and every agent's
+ *  shift schedule are driven by, made visible. Drawn un-shaded (like the
+ *  status chips) so it stays readable at any hour. */
+function drawWallClock(cx, cy, nowMs) {
+  const ctx = ctx0();
+  const d = new Date(nowMs);
+  const h = d.getHours() % 12;
+  const m = d.getMinutes();
+  const s = d.getSeconds();
+  const r = 16;
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#3a342b";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#f5f1e6";
+  ctx.fill();
+
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const inner = i % 3 === 0 ? r - 4 : r - 2.5;
+    ctx.strokeStyle = "#6b6358";
+    ctx.lineWidth = i % 3 === 0 ? 1.4 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.sin(a) * (r - 1.5), cy - Math.cos(a) * (r - 1.5));
+    ctx.lineTo(cx + Math.sin(a) * inner, cy - Math.cos(a) * inner);
+    ctx.stroke();
+  }
+
+  const hand = (angle, len, width, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.sin(angle) * len, cy - Math.cos(angle) * len);
+    ctx.stroke();
+  };
+  hand(((h + m / 60) / 12) * Math.PI * 2, r * 0.48, 2, "#2e2a22");
+  hand(((m + s / 60) / 60) * Math.PI * 2, r * 0.74, 1.5, "#2e2a22");
+  hand((s / 60) * Math.PI * 2, r * 0.8, 1, "#c0504a");
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 1.6, 0, Math.PI * 2);
+  ctx.fillStyle = "#2e2a22";
+  ctx.fill();
+}
+
 function buildFloorScene(positions) {
   const byRoom = groupByRoom(positions);
-  const { rows, gridW, gridD } = layoutFloor(byRoom);
+  const { cellsFlat, gridW, gridD } = layoutFloor(byRoom);
   const bounds = isoBounds(gridW, gridD, 90, 16);
 
   const deskTileByPos = new Map();
   const roomBoundsByPos = new Map();
-  const cellsFlat = [];
-  for (const row of rows) {
-    for (const cell of row.cells) {
-      cellsFlat.push({ ...cell, gy: row.gy });
-      cell.positions.forEach((p, i) => {
-        deskTileByPos.set(p.id, { x: cell.gx + 1 + i * 2 + 0.5, y: row.gy + 1.5 });
-        roomBoundsByPos.set(p.id, { gx: cell.gx, gy: row.gy, w: cell.w });
-      });
-    }
+  for (const cell of cellsFlat) {
+    cell.positions.forEach((p, i) => {
+      deskTileByPos.set(p.id, { x: cell.gx + 1 + i * 2 + 0.5, y: cell.gy + 1.5 });
+      roomBoundsByPos.set(p.id, { gx: cell.gx, gy: cell.gy, w: cell.w });
+    });
   }
-  return { byRoom, rows, gridW, gridD, bounds, deskTileByPos, roomBoundsByPos, cellsFlat };
+  return { byRoom, gridW, gridD, bounds, deskTileByPos, roomBoundsByPos, cellsFlat };
 }
 
 function drawFloorScene(ctx, scene, nowMs) {
@@ -667,6 +714,21 @@ function drawFloorScene(ctx, scene, nowMs) {
       fn: () => drawCeilingLight(lampAnchor.x, lampAnchor.y - WALL_H - 4),
     });
   }
+
+  // low trim along the open south/east edges: the north/west walls above
+  // already close two sides, this closes the rest so the whole floor reads
+  // as one enclosed rectangular space rather than open-ended rooms in a row.
+  queue.push({ key: gridW + gridD + 1, fn: () => drawWallEdge(ctx, 0, gridD, gridW, gridD, TRIM_H, "#9c8f78", "#b5a98f") });
+  queue.push({ key: gridW + gridD + 1, fn: () => drawWallEdge(ctx, gridW, 0, gridW, gridD, TRIM_H, "#9c8f78", "#b5a98f") });
+
+  // a real-time wall clock, hung on the shared space's side wall — the back
+  // wall sits right behind where people cluster and wander, so it kept
+  // getting covered there; the west wall's room seam stays mostly clear.
+  const clockAnchor = isoPoint(0, gridD / 2);
+  queue.push({
+    key: gridD / 2 + 0.4,
+    fn: () => drawWallClock(clockAnchor.x, clockAnchor.y - WALL_H * 0.62, nowMs),
+  });
 
   // desks
   for (const [room, positions] of byRoom) {
@@ -814,6 +876,69 @@ function drawBench(gx, gy) {
   drawIsoBox(ctx0(), gx, gy, 1.6, 0.5, 8, "#8a6a46", "#6e5236", "#7c5d3d");
 }
 
+function drawTrashBin(gx, gy) {
+  drawIsoBox(ctx0(), gx, gy, 0.4, 0.4, 13, "#5a6b5a", "#44503f", "#4e5c4a");
+}
+
+/** A real road-crossing light, cycling green -> yellow -> red like a real one
+ *  (not an even three-way split), so it reads as something actually timed. */
+function drawTrafficLight(gx, gy, nowMs) {
+  const ctx = ctx0();
+  const dark = tod0().dark;
+  const base = tileCenter(gx, gy);
+  ctx.fillStyle = shade("#3a362f", dark);
+  ctx.fillRect(base.x - 1.5, base.y - 52, 3, 52);
+  const boxX = base.x - 6,
+    boxY = base.y - 66;
+  ctx.fillStyle = shade("#2a2822", dark);
+  ctx.fillRect(boxX, boxY, 12, 28);
+
+  const cycle = nowMs % 9000;
+  const activeIdx = cycle < 4500 ? 2 : cycle < 5500 ? 1 : 0; // 0 red, 1 yellow, 2 green
+  const colors = ["#d9534f", "#ffd24a", "#4caf7d"];
+  for (let i = 0; i < 3; i++) {
+    const cy = boxY + 6 + i * 9;
+    const on = i === activeIdx;
+    if (on) {
+      const glow = ctx.createRadialGradient(boxX + 6, cy, 1, boxX + 6, cy, 9);
+      glow.addColorStop(0, `${colors[i]}88`);
+      glow.addColorStop(1, `${colors[i]}00`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(boxX + 6, cy, 9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(boxX + 6, cy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = on ? colors[i] : shade(colors[i], 0.78);
+    ctx.fill();
+  }
+}
+
+/** A small dog trotting beside its owner — purely cosmetic street life. */
+function drawDog(cx, groundY, nowMs) {
+  const ctx = ctx0();
+  const dark = tod0().dark;
+  const swing = 2.2 * Math.sin(nowMs / 170);
+  const bodyY = groundY - 6;
+  ctx.fillStyle = shade("#6b4a2d", dark);
+  ctx.fillRect(cx - 6, bodyY + 1, 2, 4 + swing);
+  ctx.fillRect(cx - 2, bodyY + 1, 2, 4 - swing);
+  ctx.fillRect(cx + 2, bodyY + 1, 2, 4 + swing);
+  ctx.fillRect(cx + 4, bodyY + 1, 2, 4 - swing);
+  ctx.fillStyle = shade("#b08a54", dark);
+  ctx.fillRect(cx - 7, bodyY - 3, 13, 5);
+  ctx.fillRect(cx - 9, bodyY - 5, 5, 5);
+  ctx.fillRect(cx + 5, bodyY - 6, 2, 4);
+}
+
+/** Smooth back-and-forth pacing along the sidewalk, independent of any agent
+ *  data — ambient pedestrian traffic. */
+function walkerX(nowMs, periodMs, xMin, xMax, phase) {
+  const t = (nowMs / periodMs + phase) % 2;
+  return t < 1 ? lerp(xMin, xMax, t) : lerp(xMax, xMin, t - 1);
+}
+
 function drawGroundScene(ctx, gridW, nowMs) {
   _ctx = ctx;
   const bounds = isoBounds(gridW, GROUND_D, 70, 10);
@@ -855,7 +980,9 @@ function drawGroundScene(ctx, gridW, nowMs) {
 
   queue.push({ key: 0.6, fn: () => drawLampPost(1, 1) });
   queue.push({ key: gridW - 1.4, fn: () => drawTree(gridW - 2, 1) });
-  queue.push({ key: gridW - 3.4, fn: () => drawCar(gridW - 4, 2.1) });
+  queue.push({ key: gridW - 4.4, fn: () => drawCar(gridW - 5, 2.1) });
+  queue.push({ key: gridW - 6.5, fn: () => drawTrafficLight(gridW - 7, 1.9, nowMs) });
+  queue.push({ key: doorX - 3.3, fn: () => drawTrashBin(doorX - 3.5, 1.3) });
 
   // street vendor stall, off to one side
   const vgx = 2.0,
@@ -872,7 +999,7 @@ function drawGroundScene(ctx, gridW, nowMs) {
   });
 
   // a bench with two NPCs having a drink and a chat, clear of the door and vendor
-  const bgx = doorX + 2,
+  const bgx = doorX + 3,
     bgy = 1.15;
   queue.push({ key: bgx + bgy + 0.4, fn: () => drawBench(bgx, bgy) });
   const benchMid = tileCenter(bgx + 1.1, bgy + 0.25);
@@ -892,6 +1019,31 @@ function drawGroundScene(ctx, gridW, nowMs) {
     });
   }
   queue.push({ key: bgx + bgy + 0.85, fn: () => drawSpeechBubble(ctx, benchMid.x, benchMid.y - 38, nowMs) });
+
+  // two pedestrians pacing the sidewalk, one walking a dog — ambient street
+  // life independent of any agent data, like the vendor and bench above.
+  const walkY = 1.35;
+  const w1x = walkerX(nowMs, 9000, 1.5, gridW - 1.5, 0);
+  const w2x = walkerX(nowMs, 12000, 1.5, gridW - 1.5, 0.55);
+  queue.push({
+    key: w1x + walkY,
+    fn: () => {
+      const seed = hashStr("walker1");
+      const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
+      const pt = tileCenter(w1x, walkY);
+      drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: true });
+      drawDog(pt.x - 13, pt.y, nowMs);
+    },
+  });
+  queue.push({
+    key: w2x + walkY + 0.05,
+    fn: () => {
+      const seed = hashStr("walker2");
+      const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
+      const pt = tileCenter(w2x, walkY);
+      drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: true });
+    },
+  });
 
   queue.sort((a, b) => a.key - b.key);
   for (const job of queue) job.fn();
@@ -1025,8 +1177,12 @@ function tick() {
     _tod = getTimeOfDay(nowMs);
     const tod = _tod;
     const floorScene = buildFloorScene(latestState.positions);
-    const totalW = Math.max(floorScene.bounds.width, isoBounds(floorScene.gridW, GROUND_D, 0, 0).width) + 20;
-    const totalH = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height + WIN_STRIP_H + isoBounds(floorScene.gridW, GROUND_D, 70, 10).height;
+    // The street is its own, wider stretch of ground (a building doesn't span
+    // the whole block) so there's always room for the street-life props below,
+    // even for a tiny one-room company whose floor alone would be very narrow.
+    const groundGridW = Math.max(floorScene.gridW + 10, 20);
+    const totalW = Math.max(floorScene.bounds.width, isoBounds(groundGridW, GROUND_D, 0, 0).width) + 20;
+    const totalH = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height + WIN_STRIP_H + isoBounds(groundGridW, GROUND_D, 70, 10).height;
 
     if (canvas.width !== Math.ceil(totalW) || canvas.height !== Math.ceil(totalH)) {
       canvas.width = Math.ceil(totalW);
@@ -1049,11 +1205,11 @@ function tick() {
     drawWindowStrip(ctx, yAfterFloor, canvas.width, 2, nowMs, tod);
     drawFloorPlaque(ctx, 6, SKY_H + ROOF_H + 3);
 
-    const groundBounds = isoBounds(floorScene.gridW, GROUND_D, 70, 10);
+    const groundBounds = isoBounds(groundGridW, GROUND_D, 70, 10);
     const groundX = (canvas.width - groundBounds.width) / 2;
     ctx.save();
     ctx.translate(groundX, yAfterFloor + WIN_STRIP_H);
-    drawGroundScene(ctx, floorScene.gridW, nowMs);
+    drawGroundScene(ctx, groundGridW, nowMs);
     ctx.restore();
   }
   requestAnimationFrame(tick);
