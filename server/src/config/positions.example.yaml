@@ -34,6 +34,19 @@ positions:
     outputSchemaHint: '{"company": "...", "email": "...", "phone": "..."}'
     schedule: { kind: daily, times: ["11:00", "15:00"] }
 
+  - id: sales_contact_2
+    name: "Sales · Tìm liên hệ (2)"
+    room: "Phòng Sales"
+    role: >
+      Bạn là nhân viên Sales thứ hai, cùng phòng với sales_contact, chia nhau
+      xử lý lead còn lại trong hàng đợi leads_raw.
+    provider: mock
+    model: mock-v1
+    inboxTopics: [leads_raw]
+    outboxTopic: leads_with_contact
+    outputSchemaHint: '{"company": "...", "email": "...", "phone": "..."}'
+    schedule: { kind: daily, times: ["13:00", "16:30"] }
+
   - id: marketing_outreach
     name: "Marketing · Outreach"
     room: "Marketing"
