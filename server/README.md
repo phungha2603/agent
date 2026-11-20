@@ -10,6 +10,22 @@ vị trí khi nó đổi.
 
 ## Chạy thử (không cần API key)
 
+**Yêu cầu Node.js 20 hoặc 22 (bản LTS).** `better-sqlite3` cần biên dịch
+native code nếu không có sẵn bản build dựng sẵn cho đúng version Node đang
+dùng — các bản LTS luôn có bản dựng sẵn nên cài tức thì; bản Node quá mới
+(vd bản "Current" mới nhất, chưa phải LTS) thường chưa có, `npm install` sẽ
+tự biên dịch và dễ lỗi nếu mã nguồn module chưa cập nhật theo kịp. Nếu gặp
+lỗi dài dằng dặc nhắc đến `node-gyp`/`make`/`V8_DEPRECATED` lúc `npm
+install`, 99% là do đang dùng Node quá mới — cài [nvm](https://github.com/nvm-sh/nvm)
+rồi:
+
+```bash
+nvm install 22
+nvm use 22
+rm -rf node_modules package-lock.json
+npm install
+```
+
 Config mẫu `src/config/positions.example.yaml` dùng toàn bộ provider `mock`
 — chạy được ngay, không tốn phí, để bạn thấy luồng điều phối hoạt động.
 
