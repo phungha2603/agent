@@ -11,6 +11,9 @@ const timeSliderEl = document.getElementById("time-slider");
 const timeMarkersEl = document.getElementById("time-markers");
 const timeLabelEl = document.getElementById("time-label");
 const timeLiveBtn = document.getElementById("time-live");
+const moodSliderEl = document.getElementById("mood-slider");
+const moodResetBtn = document.getElementById("mood-reset");
+const seasonSelectEl = document.getElementById("season-select");
 
 socket.on("connect", () => {
   connStatus.textContent = "đang kết nối trực tiếp";
@@ -112,24 +115,41 @@ function shade(hex, dark) {
   return lerpColor(hex, "#12141f", Math.min(1, dark) * 0.75);
 }
 
-// Keyframes across a 24h day: ban ngày nắng (bright) -> chiều mát (golden,
-// softer) -> tối (dark, lamps on). `dark` is 0=full daylight..1=full night;
-// `lamp` drives street lamps / lit windows / office ceiling lights.
+// Keyframes across a 24h day — re-tuned for a neon/atmospheric night-city
+// mood (Gemini-reviewed "A"): dusk/night now dominate more of the cycle,
+// night sky leans deep indigo/purple instead of plain navy, and `lamp`
+// (street lamps / lit windows / office ceiling lights / neon signs) stays
+// near its max for longer so the glow reads strongly. `dark` is still
+// 0=full daylight..1=full night, same shape as before — only the color
+// stops and keyframe hours changed, so every caller of getTimeOfDay/shade
+// is unaffected.
 const DAY_KEYFRAMES = [
-  { h: 0, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
-  { h: 5, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
-  { h: 6.5, top: "#3c5478", bottom: "#f3a76a", dark: 0.45, lamp: 0.5 },
+  { h: 0, top: "#0a0a1a", bottom: "#1a0f2e", dark: 1, lamp: 1 },
+  { h: 5, top: "#0a0a1a", bottom: "#1a0f2e", dark: 1, lamp: 1 },
+  { h: 6.5, top: "#3c3568", bottom: "#d9637a", dark: 0.5, lamp: 0.6 },
   { h: 8, top: "#bfe3f5", bottom: "#e3f3fa", dark: 0, lamp: 0 },
-  { h: 16, top: "#bfe3f5", bottom: "#e3f3fa", dark: 0, lamp: 0 },
-  { h: 17.5, top: "#8fb3d6", bottom: "#ffcf8a", dark: 0.12, lamp: 0.12 },
-  { h: 18.8, top: "#3a4571", bottom: "#ff9566", dark: 0.5, lamp: 0.65 },
-  { h: 20, top: "#121a30", bottom: "#2a2f52", dark: 0.9, lamp: 0.95 },
-  { h: 24, top: "#0b1322", bottom: "#1c2b45", dark: 1, lamp: 1 },
+  { h: 15, top: "#bfe3f5", bottom: "#e3f3fa", dark: 0, lamp: 0 },
+  { h: 16.5, top: "#5c5a9e", bottom: "#ffa15c", dark: 0.18, lamp: 0.2 },
+  { h: 18, top: "#2e2360", bottom: "#ff6f91", dark: 0.6, lamp: 0.75 },
+  { h: 19.5, top: "#140f33", bottom: "#3d1f54", dark: 0.95, lamp: 1 },
+  { h: 24, top: "#0a0a1a", bottom: "#1a0f2e", dark: 1, lamp: 1 },
 ];
 
+/** Overrides which hour-of-day drives the sky/lamp *mood* (colors only) —
+ * e.g. forcing the neon-night look on demand from the control bar — while
+ * leaving `virtualTimeMs` itself untouched everywhere else (the wall clock
+ * and the history view's status reconstruction must stay on the real/
+ * scrubbed time, never on this cosmetic override). null = no override. */
+let moodHourOverride = null;
+
 function getTimeOfDay(nowMs) {
-  const d = new Date(nowMs);
-  const hour = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  let hour;
+  if (moodHourOverride != null) {
+    hour = moodHourOverride;
+  } else {
+    const d = new Date(nowMs);
+    hour = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  }
   let i = 0;
   while (i < DAY_KEYFRAMES.length - 1 && DAY_KEYFRAMES[i + 1].h < hour) i++;
   const a = DAY_KEYFRAMES[i];
@@ -150,6 +170,67 @@ function getTimeOfDay(nowMs) {
 let _tod = null;
 function tod0() {
   return _tod || { dark: 0, lamp: 0, sunAlpha: 1, moonAlpha: 0, skyTop: "#bfe3f5", skyBottom: "#e3f3fa" };
+}
+
+/* ---------- season: a second, slower decorative time-axis ---------- */
+
+const SEASONS = ["spring", "summer", "autumn", "winter"];
+const SEASON_LABEL = { spring: "Xuân", summer: "Hạ", autumn: "Thu", winter: "Đông" };
+
+/** Meteorological-season mapping (Mar-May spring, ... Dec-Feb winter), same
+ * convention Gemini proposed. Derived from `nowMs` (so it tracks
+ * `virtualTimeMs`, not `Date.now()` directly) and purely decorative —
+ * unrelated to agent data, like the rest of the street scene. */
+function getSeason(nowMs) {
+  const month = new Date(nowMs).getMonth(); // 0=Jan
+  if (month >= 2 && month <= 4) return "spring";
+  if (month >= 5 && month <= 7) return "summer";
+  if (month >= 8 && month <= 10) return "autumn";
+  return "winter";
+}
+
+/** null = auto (derive from `nowMs`'s real/scrubbed calendar month); a
+ * SEASONS value = the viewer pinned a season from the control bar. */
+let seasonOverride = null;
+
+function currentSeason(nowMs) {
+  return seasonOverride || getSeason(nowMs);
+}
+
+const _seasonParticles = []; // lazily seeded per-particle state, reused every frame
+function ensureSeasonParticles(n) {
+  while (_seasonParticles.length < n) {
+    _seasonParticles.push({ x: Math.random(), y: Math.random(), speed: rand(0.6, 1.4), drift: rand(-0.3, 0.3), size: rand(1.4, 3) });
+  }
+}
+
+/** Falling snow (winter) / petals (spring) / leaves (autumn) drifting down
+ * over the whole canvas — a cheap full-scene overlay, not tied to any
+ * particular room or the isometric grid, so it works the same regardless
+ * of company size. Summer has no overlay (the neon night look is already
+ * the "default" mood). */
+/** `roofY0`/`roofY1` is the building floor's vertical span in canvas space —
+ * it has its own roof drawn over it, so particles falling in from outside
+ * must not render through it (a particle landing in that band this frame
+ * is simply skipped — it reappears below the building next frame, same as
+ * snow/leaves would actually be hidden by a roof passing overhead). */
+function drawSeasonOverlay(ctx, w, h, season, nowMs, roofY0, roofY1) {
+  if (season === "summer") return;
+  const n = 46;
+  ensureSeasonParticles(n);
+  const color = season === "winter" ? "255,255,255" : season === "autumn" ? "198,122,56" : "255,183,206";
+  const fallSpeed = season === "winter" ? 14 : season === "autumn" ? 22 : 10;
+  for (let i = 0; i < n; i++) {
+    const p = _seasonParticles[i];
+    const t = ((nowMs / 1000) * fallSpeed * p.speed + i * 97) / h;
+    const fy = (t % 1) * h;
+    if (fy >= roofY0 && fy <= roofY1) continue;
+    const fx = ((p.x + Math.sin(nowMs / 1800 + i) * p.drift * 0.04) % 1) * w;
+    ctx.fillStyle = `rgba(${color},${season === "winter" ? 0.8 : 0.65})`;
+    ctx.beginPath();
+    ctx.arc(fx, fy, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -1081,6 +1162,65 @@ const SKY_H = 58;
 const ROOF_H = 16;
 const WIN_STRIP_H = 24;
 
+// A fixed-count skyline silhouette, seeded once (not re-randomized every
+// frame — cheap), drawn entirely within the existing SKY_H band so it never
+// changes canvas layout/sizing math (pan/zoom auto-fit stays correct). Two
+// of the buildings (seed%5===0) get a small glowing "neon sign" accent via
+// shadowBlur — deliberately just 1-2 of these, not one per window, since
+// shadowBlur is per-pixel and expensive compared to the createRadialGradient
+// technique used everywhere else for glow (lamps, lit windows, screens).
+const SKYLINE_BUILDINGS = Array.from({ length: 11 }, (_, i) => {
+  const seed = hashStr("skyline" + i);
+  return {
+    xFrac: (i + 0.5) / 11 + (((seed % 21) - 10) / 400),
+    wFrac: 0.05 + ((seed >> 3) % 10) / 180,
+    hFrac: 0.35 + ((seed >> 6) % 100) / 160,
+    seed,
+  };
+});
+const NEON_COLORS = ["#5ef0ff", "#ff5ec8", "#9d6bff"];
+
+function drawSkyline(ctx, w, tod, nowMs) {
+  // Fades in with `dark` rather than just re-shading at full opacity — at
+  // full daylight these would otherwise render as solid near-black blocks
+  // cut out of a bright blue sky (looked broken); a near-invisible daytime
+  // hint that solidifies into a proper dark silhouette by dusk/night reads
+  // correctly in both and matches the reference's (always-night) mood.
+  const silhouetteAlpha = clamp(0.1 + tod.dark * 0.8, 0, 1);
+  for (const b of SKYLINE_BUILDINGS) {
+    const bw = Math.max(8, b.wFrac * w);
+    const bh = Math.min(SKY_H - 6, b.hFrac * SKY_H);
+    const bx = b.xFrac * w - bw / 2;
+    const by = SKY_H - bh;
+    ctx.save();
+    ctx.globalAlpha = silhouetteAlpha;
+    ctx.fillStyle = "#241c3d";
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.restore();
+
+    const winRows = Math.max(1, Math.floor(bh / 10));
+    for (let r = 0; r < winRows; r++) {
+      const wSeed = hashStr(`skywin${b.seed}-${r}`);
+      if ((wSeed % 100) / 100 >= tod.lamp * 0.7) continue;
+      const blink = Math.sin(nowMs / 1500 + wSeed) > 0.85;
+      ctx.fillStyle = blink ? "rgba(120,220,255,0.9)" : `rgba(255,200,120,${0.5 + 0.4 * tod.lamp})`;
+      ctx.fillRect(bx + bw * 0.25, by + 4 + r * 9, Math.max(2, bw * 0.5), 3);
+    }
+
+    if (b.seed % 5 === 0 && tod.lamp > 0.25) {
+      const color = NEON_COLORS[b.seed % NEON_COLORS.length];
+      ctx.save();
+      ctx.shadowBlur = 7;
+      ctx.shadowColor = color;
+      ctx.globalAlpha = 0.6 + 0.25 * Math.sin(nowMs / 700 + b.seed);
+      ctx.fillStyle = color;
+      roundRect(ctx, bx + bw * 0.2, by + 3, bw * 0.6, 4, 1.5);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
 function drawSky(ctx, w, nowMs, tod) {
   const grad = ctx.createLinearGradient(0, 0, 0, SKY_H);
   grad.addColorStop(0, tod.skyTop);
@@ -1098,6 +1238,8 @@ function drawSky(ctx, w, nowMs, tod) {
       ctx.fillRect(sx, sy, 1.6, 1.6);
     }
   }
+
+  drawSkyline(ctx, w, tod, nowMs);
 
   if (tod.sunAlpha > 0.01) {
     ctx.fillStyle = `rgba(255,221,120,${0.9 * tod.sunAlpha})`;
@@ -1415,6 +1557,21 @@ function setupTimeControls() {
     virtualTimeMs = Number(timeSliderEl.value);
     refreshTimeUI();
   });
+
+  // Mood override only feeds getTimeOfDay()'s color calculation — it never
+  // touches virtualTimeMs, so the wall clock and history-mode status stay
+  // accurate regardless of what mood the viewer has dialed in.
+  moodSliderEl.addEventListener("input", () => {
+    moodHourOverride = Number(moodSliderEl.value);
+  });
+  moodResetBtn.addEventListener("click", () => {
+    moodHourOverride = null;
+    moodSliderEl.value = "12";
+  });
+
+  seasonSelectEl.addEventListener("change", () => {
+    seasonOverride = seasonSelectEl.value === "auto" ? null : seasonSelectEl.value;
+  });
 }
 
 function render(state) {
@@ -1482,6 +1639,8 @@ function tick() {
     ctx.translate(groundX, yAfterFloor + WIN_STRIP_H);
     drawGroundScene(ctx, groundGridW, nowMs);
     ctx.restore();
+
+    drawSeasonOverlay(ctx, canvas.width, canvas.height, currentSeason(nowMs), nowMs, floorY, yAfterFloor);
   }
   requestAnimationFrame(tick);
 }

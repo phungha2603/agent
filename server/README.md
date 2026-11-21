@@ -164,13 +164,38 @@ Tính năng này được thiết kế qua 1 vòng thảo luận Claude↔Gemini
 lượt) trước khi triển khai — xem lịch sử trao đổi trong quá trình phát
 triển nếu cần.
 
+## Giao diện "neon/khí quyển" + trục Mùa
+
+Vẫn là `<canvas>` 2D vẽ bằng code (không dùng ảnh/illustration ngoài —
+không có công cụ để tạo loại ảnh đó), chỉ đổi bảng màu/ánh sáng để gần với
+không khí thành phố về đêm kiểu neon: đêm/hoàng hôn kéo dài hơn trong chu
+kỳ ngày-đêm, bầu trời ngả tím/chàm sâu hơn, skyline nhà cao tầng vẽ ngay
+trong dải trời sẵn có (mờ dần lúc ban ngày, rõ dần về đêm — tránh vẽ thành
+khối đen giữa trời xanh), vài biển hiệu neon phát sáng nhẹ. Hiệu ứng phát
+sáng vẫn dùng kỹ thuật `createRadialGradient` đã có (rẻ hơn, không tụt khung
+hình) — chỉ 1-2 biển hiệu neon dùng `shadowBlur`, giới hạn số lượng vì kỹ
+thuật này đắt hơn nhiều nếu lặp lại cho mọi cửa sổ/đèn.
+
+Thêm 1 trục trang trí mới: **Mùa** (Xuân/Hạ/Thu/Đông), tự động theo tháng
+thật (hoặc theo thời điểm đang tua lại lịch sử), có thể ghim thủ công ở
+control bar. Chỉ ảnh hưởng vài hiệu ứng hạt rơi (tuyết mùa đông, lá mùa
+thu, cánh hoa mùa xuân) phủ ngoài cảnh trời/phố — không rơi xuyên qua mái
+toà nhà, và không ảnh hưởng dữ liệu agent.
+
+Control bar dưới canvas giờ có 3 nhóm (kính mờ `backdrop-filter`, giống bố
+cục ảnh tham khảo của chủ dự án): **Lịch sử** (scrubber đã có ở trên),
+**Ngày/Đêm** (thanh trượt ghim "mood" — ép cảnh hiển thị như 1 giờ bất kỳ
+24h, CHỈ đổi màu sắc/ánh sáng, không đụng tới đồng hồ kim thật hay dữ liệu
+lịch sử — 2 biến hoàn toàn tách biệt), và **Mùa** nói trên.
+
 ## Giới hạn hiện tại (biết trước để mở rộng)
 
 - Agent hiện chỉ gọi LLM một lượt rồi parse JSON ra kết quả — chưa có
   tool-calling thật (web search, gửi email...). Có thể thêm bằng cách mở
   rộng `agents/adapter.ts` để truyền `tools` vào SDK của từng provider.
-- Dashboard vẽ cả công ty dưới dạng pixel-art isometric (một `<canvas>`
-  liền mạch, chiếu phối cảnh 2:1): các phòng ghép chung một mặt bằng của
+- Dashboard vẽ cả công ty bằng code trên một `<canvas>` liền mạch (chiếu
+  phối cảnh isometric 2:1, không dùng ảnh/illustration ngoài), theo tông
+  neon/khí quyển (xem mục ngay trên): các phòng ghép chung một mặt bằng của
   một tầng toà nhà, có tường/bàn/màn hình nổi khối; bên trên có bầu
   trời/mây/nắng + dãy cửa sổ tầng trên, bên dưới có phố/vỉa hè/đèn
   đường/xe/cây + một gian hàng rong và một ghế đá có người ngồi trò

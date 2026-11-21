@@ -107,28 +107,62 @@ main {
   will-change: transform;
 }
 
+/* Glass-morphic dark chrome, deliberately NOT tied to the light/dark theme
+   vars — this overlay bar reads as fixed UI "glass" regardless of the
+   scene's own day/night cycle, matching the reference image's always-dark
+   control chrome. */
 #time-bar {
-  background: var(--panel);
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 10px 18px;
   margin-top: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   font: inherit;
-  color: var(--ink);
+  color: #ece8ff;
+  flex-wrap: wrap;
 }
 
 #time-bar button,
 #time-bar select {
   font: inherit;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--border);
+  color: #ece8ff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   padding: 4px 10px;
   cursor: pointer;
+}
+
+.time-sep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.time-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#group-history {
+  flex: 1;
+  min-width: 0;
+}
+
+.time-icon {
+  font-size: 1em;
+  line-height: 1;
+}
+
+#mood-slider {
+  width: 110px;
 }
 
 #time-controls {
@@ -180,7 +214,7 @@ main {
 
 #time-label {
   white-space: nowrap;
-  color: var(--muted);
+  color: rgba(236, 232, 255, 0.7);
   font-size: 0.9em;
 }
 
