@@ -280,6 +280,12 @@ function drawSpeechBubble(ctx, cx, bottomY, nowMs) {
 const TILE_W = 60;
 const TILE_H = 30;
 
+// Uniform zoom applied only around the office floor scene (ctx.scale, not a
+// change to TILE_W/TILE_H) — makes the whole office bigger/more detailed
+// without touching the tile-coordinate math that pan/zoom, history-mode
+// camera panning, and the room/desk layout all depend on.
+const FLOOR_SCALE = 1.4;
+
 function isoPoint(gx, gy) {
   return { x: ((gx - gy) * TILE_W) / 2, y: ((gx + gy) * TILE_H) / 2 };
 }
@@ -660,13 +666,47 @@ function tryPairChats(byRoom, roomBoundsByPos, nowMs) {
 }
 
 function drawDesk(gx, gy) {
-  drawIsoBox(ctx0(), gx + 0.15, gy + 0.15, 0.7, 0.7, DESK_H, "#8a5a34", "#6e4526", "#7a4e2c");
+  const ctx = ctx0();
+  drawIsoBox(ctx, gx + 0.15, gy + 0.15, 0.7, 0.7, DESK_H, "#8a5a34", "#6e4526", "#7a4e2c");
   const m = tileCenter(gx, gy);
   const mTop = { x: m.x, y: m.y - DESK_H - 11 };
-  ctx0().fillStyle = "#2b2b2b";
-  ctx0().fillRect(mTop.x - 7, mTop.y, 14, 11);
-  ctx0().fillStyle = "#86d6ff";
-  ctx0().fillRect(mTop.x - 5, mTop.y + 2, 10, 7);
+  ctx.fillStyle = "#2b2b2b";
+  ctx.fillRect(mTop.x - 7, mTop.y, 14, 11);
+  ctx.fillStyle = "#86d6ff";
+  ctx.fillRect(mTop.x - 5, mTop.y + 2, 10, 7);
+  // keyboard, in front of the monitor
+  ctx.fillStyle = "#4a443a";
+  ctx.fillRect(mTop.x - 6, mTop.y + 13, 12, 4);
+  // a small mug beside the monitor — just a splash of color/detail
+  const mugSeed = hashStr(`mug${gx}-${gy}`);
+  ctx.fillStyle = pick(["#c0604a", "#4a7c6f", "#b98d2e", "#6b5b95"], mugSeed);
+  ctx.fillRect(mTop.x + 9, mTop.y + 10, 5, 6);
+}
+
+/** A potted plant, one per room tucked in a back corner clear of desks — pure
+ *  decor, sized for an interior (smaller than the old street-side tree). */
+function drawPlant(gx, gy) {
+  const ctx = ctx0();
+  const dark = tod0().dark;
+  const base = tileCenter(gx, gy);
+  ctx.fillStyle = shade("#8a6a4a", dark);
+  ctx.beginPath();
+  ctx.moveTo(base.x - 6, base.y);
+  ctx.lineTo(base.x + 6, base.y);
+  ctx.lineTo(base.x + 4, base.y - 10);
+  ctx.lineTo(base.x - 4, base.y - 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = shade("#4f7a4a", dark);
+  for (const [dx, dy, r] of [
+    [0, -22, 9],
+    [-7, -16, 7],
+    [7, -17, 7],
+  ]) {
+    ctx.beginPath();
+    ctx.arc(base.x + dx, base.y + dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 let _ctx = null;
@@ -791,7 +831,13 @@ function drawFloorScene(ctx, scene, nowMs, historyMode) {
   for (let gy = 0; gy < gridD; gy++) {
     for (let gx = 0; gx < gridW; gx++) {
       const cell = cellsFlat.find((c) => gx >= c.gx && gx < c.gx + c.w && gy >= c.gy && gy < c.gy + ROOM_D);
-      const color = cell ? pick(PALETTE.floor, hashStr(cell.room)) : "#e4ded0";
+      // The desk row's "rug" is just a different per-tile floor color, not a
+      // separate overlaid shape — a wide shape drawn with one z-key gets
+      // inconsistently covered by the individual floor tiles to its right
+      // (each has its own, often-higher gx+gy key), so folding it into this
+      // same per-tile loop is what actually keeps it reliably visible.
+      const isDeskRow = cell && gy === cell.gy + 1;
+      const color = cell ? (isDeskRow ? shade(pick(PALETTE.floor, hashStr(cell.room)), 0.22) : pick(PALETTE.floor, hashStr(cell.room))) : "#e4ded0";
       const key = gx + gy;
       queue.push({ key, fn: ((gx_, gy_, color_) => () => drawFloorTile(ctx, gx_, gy_, color_))(gx, gy, color) });
     }
@@ -816,6 +862,11 @@ function drawFloorScene(ctx, scene, nowMs, historyMode) {
       key: x0 + y0 + 0.1,
       fn: () => drawCeilingLight(lampAnchor.x, lampAnchor.y - WALL_H - 4),
     });
+
+    // a potted plant tucked in the back corner — per-room decor that reads
+    // as "more detailed" without being tied to any agent data (the desk
+    // row's "rug" is handled as a per-tile floor color above instead).
+    queue.push({ key: x1 - 1 + (y0 + 2) + 0.25, fn: () => drawPlant(x1 - 0.7, y0 + 2.6) });
   }
 
   // low trim along the open south/east edges: the north/west walls above
@@ -902,260 +953,6 @@ function drawFloorScene(ctx, scene, nowMs, historyMode) {
   ctx.restore();
   return bounds;
 }
-
-/* ---------- ground / street scene (ambient, not tied to agent data) ---------- */
-
-const GROUND_D = 4; // 0: building base, 1: sidewalk, 2-3: road
-
-function drawLampPost(gx, gy) {
-  const ctx = ctx0();
-  const tod = tod0();
-  const base = tileCenter(gx, gy);
-  ctx.fillStyle = shade("#3a362f", tod.dark);
-  ctx.fillRect(base.x - 1.5, base.y - 46, 3, 46);
-  if (tod.lamp > 0.1) {
-    const r = 14 + tod.lamp * 5;
-    const glow = ctx.createRadialGradient(base.x, base.y - 50, 1, base.x, base.y - 50, r);
-    glow.addColorStop(0, `rgba(255,221,140,${0.55 * tod.lamp})`);
-    glow.addColorStop(1, "rgba(255,221,140,0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(base.x, base.y - 50, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.beginPath();
-  ctx.arc(base.x, base.y - 50, 5, 0, Math.PI * 2);
-  ctx.fillStyle = tod.lamp > 0.1 ? "#ffe49a" : shade("#8a8372", tod.dark);
-  ctx.fill();
-}
-
-function drawTree(gx, gy) {
-  const ctx = ctx0();
-  const dark = tod0().dark;
-  const base = tileCenter(gx, gy);
-  ctx.fillStyle = shade("#6b4a2d", dark);
-  ctx.fillRect(base.x - 3, base.y - 26, 6, 26);
-  ctx.fillStyle = shade("#5f8c53", dark);
-  ctx.beginPath();
-  ctx.arc(base.x, base.y - 32, 15, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawCar(gx, gy) {
-  const ctx = ctx0();
-  drawIsoBox(ctx, gx, gy, 1.6, 0.9, 14, "#a15b4f", "#7e4038", "#8c473e");
-  drawIsoBox(ctx, gx + 0.3, gy + 0.1, 0.9, 0.7, 12, "#cde7f2", "#a9c3cc", "#b8d2db");
-}
-
-function drawVendorCart(gx, gy, nowMs) {
-  const ctx = ctx0();
-  drawIsoBox(ctx, gx, gy, 1, 0.8, 20, "#d8a24a", "#a97a32", "#c08f3d");
-  const top = tileCenter(gx + 0.5, gy + 0.4);
-  const poleTop = { x: top.x, y: top.y - 20 - 26 };
-  ctx.strokeStyle = "#6b4a2d";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(top.x, top.y - 20);
-  ctx.lineTo(poleTop.x, poleTop.y);
-  ctx.stroke();
-  const sway = Math.sin(nowMs / 900) * 2;
-  ctx.fillStyle = shade("#c0504a", tod0().dark);
-  ctx.beginPath();
-  ctx.moveTo(poleTop.x - 24 + sway, poleTop.y + 8);
-  ctx.lineTo(poleTop.x + 24 + sway, poleTop.y + 8);
-  ctx.lineTo(poleTop.x, poleTop.y - 10);
-  ctx.closePath();
-  ctx.fill();
-  // steam wisps
-  for (let i = 0; i < 2; i++) {
-    const t = (nowMs / 900 + i * 0.5) % 1;
-    ctx.fillStyle = `rgba(255,255,255,${0.5 * (1 - t)})`;
-    ctx.beginPath();
-    ctx.arc(top.x - 6 + i * 10, top.y - 24 - t * 20, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawBench(gx, gy) {
-  drawIsoBox(ctx0(), gx, gy, 1.6, 0.5, 8, "#8a6a46", "#6e5236", "#7c5d3d");
-}
-
-function drawTrashBin(gx, gy) {
-  drawIsoBox(ctx0(), gx, gy, 0.4, 0.4, 13, "#5a6b5a", "#44503f", "#4e5c4a");
-}
-
-/** A real road-crossing light, cycling green -> yellow -> red like a real one
- *  (not an even three-way split), so it reads as something actually timed. */
-function drawTrafficLight(gx, gy, nowMs) {
-  const ctx = ctx0();
-  const dark = tod0().dark;
-  const base = tileCenter(gx, gy);
-  ctx.fillStyle = shade("#3a362f", dark);
-  ctx.fillRect(base.x - 1.5, base.y - 52, 3, 52);
-  const boxX = base.x - 6,
-    boxY = base.y - 66;
-  ctx.fillStyle = shade("#2a2822", dark);
-  ctx.fillRect(boxX, boxY, 12, 28);
-
-  const cycle = nowMs % 9000;
-  const activeIdx = cycle < 4500 ? 2 : cycle < 5500 ? 1 : 0; // 0 red, 1 yellow, 2 green
-  const colors = ["#d9534f", "#ffd24a", "#4caf7d"];
-  for (let i = 0; i < 3; i++) {
-    const cy = boxY + 6 + i * 9;
-    const on = i === activeIdx;
-    if (on) {
-      const glow = ctx.createRadialGradient(boxX + 6, cy, 1, boxX + 6, cy, 9);
-      glow.addColorStop(0, `${colors[i]}88`);
-      glow.addColorStop(1, `${colors[i]}00`);
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(boxX + 6, cy, 9, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.beginPath();
-    ctx.arc(boxX + 6, cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = on ? colors[i] : shade(colors[i], 0.78);
-    ctx.fill();
-  }
-}
-
-/** A small dog trotting beside its owner — purely cosmetic street life. */
-function drawDog(cx, groundY, nowMs) {
-  const ctx = ctx0();
-  const dark = tod0().dark;
-  const swing = 2.2 * Math.sin(nowMs / 170);
-  const bodyY = groundY - 6;
-  ctx.fillStyle = shade("#6b4a2d", dark);
-  ctx.fillRect(cx - 6, bodyY + 1, 2, 4 + swing);
-  ctx.fillRect(cx - 2, bodyY + 1, 2, 4 - swing);
-  ctx.fillRect(cx + 2, bodyY + 1, 2, 4 + swing);
-  ctx.fillRect(cx + 4, bodyY + 1, 2, 4 - swing);
-  ctx.fillStyle = shade("#b08a54", dark);
-  ctx.fillRect(cx - 7, bodyY - 3, 13, 5);
-  ctx.fillRect(cx - 9, bodyY - 5, 5, 5);
-  ctx.fillRect(cx + 5, bodyY - 6, 2, 4);
-}
-
-/** Smooth back-and-forth pacing along the sidewalk, independent of any agent
- *  data — ambient pedestrian traffic. */
-function walkerX(nowMs, periodMs, xMin, xMax, phase) {
-  const t = (nowMs / periodMs + phase) % 2;
-  return t < 1 ? lerp(xMin, xMax, t) : lerp(xMax, xMin, t - 1);
-}
-
-function drawGroundScene(ctx, gridW, nowMs) {
-  _ctx = ctx;
-  const bounds = isoBounds(gridW, GROUND_D, 70, 10);
-  ctx.save();
-  ctx.translate(bounds.originX, bounds.originY);
-
-  const queue = [];
-  for (let gy = 0; gy < GROUND_D; gy++) {
-    for (let gx = 0; gx < gridW; gx++) {
-      const color = gy === 0 ? "#847c6e" : gy === 1 ? "#cfc9ba" : "#514d49";
-      queue.push({ key: gx + gy, fn: ((gx_, gy_, c) => () => drawFloorTile(ctx, gx_, gy_, c))(gx, gy, color) });
-    }
-  }
-  // road lane markings
-  for (let gx = 0; gx < gridW; gx += 2) {
-    queue.push({
-      key: gx + 2.5,
-      fn: ((gx_) => () => {
-        const p = tileCenter(gx_, 2.5);
-        ctx.fillStyle = "#e8d978";
-        ctx.fillRect(p.x - 6, p.y - 1.5, 12, 3);
-      })(gx),
-    });
-  }
-
-  // building base wall along the sidewalk, with an entrance door set into it
-  const doorX = Math.floor(gridW / 2);
-  queue.push({ key: -0.5, fn: () => drawWallEdge(ctx, 0, 0, gridW, 0, 30, "#857c6c", "#9c927f") });
-  queue.push({
-    key: doorX + 0.2,
-    fn: () => {
-      drawIsoBox(ctx, doorX - 0.35, -0.02, 0.9, 0.3, 26, "#3d372c", "#2a251e", "#332e25");
-      const p = tileCenter(doorX + 0.1, 0.1);
-      ctx.fillStyle = tod0().lamp > 0.2 ? `rgba(255,221,150,${0.6 + 0.3 * tod0().lamp})` : "#86c6e8";
-      ctx.fillRect(p.x - 7, p.y - 34, 6, 15);
-      ctx.fillRect(p.x + 1, p.y - 34, 6, 15);
-    },
-  });
-
-  queue.push({ key: 0.6, fn: () => drawLampPost(1, 1) });
-  queue.push({ key: gridW - 1.4, fn: () => drawTree(gridW - 2, 1) });
-  queue.push({ key: gridW - 4.4, fn: () => drawCar(gridW - 5, 2.1) });
-  queue.push({ key: gridW - 6.5, fn: () => drawTrafficLight(gridW - 7, 1.9, nowMs) });
-  queue.push({ key: doorX - 3.3, fn: () => drawTrashBin(doorX - 3.5, 1.3) });
-
-  // street vendor stall, off to one side
-  const vgx = 2.0,
-    vgy = 1.15;
-  queue.push({ key: vgx + vgy + 0.5, fn: () => drawVendorCart(vgx, vgy, nowMs) });
-  queue.push({
-    key: vgx + vgy + 1.1,
-    fn: () => {
-      const seed = hashStr("vendor");
-      const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
-      const pt = tileCenter(vgx + 1.9, vgy + 0.1);
-      drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: false });
-    },
-  });
-
-  // a bench with two NPCs having a drink and a chat, clear of the door and vendor
-  const bgx = doorX + 3,
-    bgy = 1.15;
-  queue.push({ key: bgx + bgy + 0.4, fn: () => drawBench(bgx, bgy) });
-  const benchMid = tileCenter(bgx + 1.1, bgy + 0.25);
-  for (let i = 0; i < 2; i++) {
-    const px = bgx + 0.4 + i * 1.3;
-    const py = bgy + 0.25;
-    queue.push({
-      key: bgx + bgy + 0.6 + i * 0.1,
-      fn: () => {
-        const seed = hashStr("bench" + i);
-        const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
-        const pt = tileCenter(px, py);
-        drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: false });
-        ctx.fillStyle = "#f2efe8";
-        ctx.fillRect(pt.x + (i === 0 ? 10 : -14), pt.y - 24, 6, 7);
-      },
-    });
-  }
-  queue.push({ key: bgx + bgy + 0.85, fn: () => drawSpeechBubble(ctx, benchMid.x, benchMid.y - 38, nowMs) });
-
-  // two pedestrians pacing the sidewalk, one walking a dog — ambient street
-  // life independent of any agent data, like the vendor and bench above.
-  const walkY = 1.35;
-  const w1x = walkerX(nowMs, 9000, 1.5, gridW - 1.5, 0);
-  const w2x = walkerX(nowMs, 12000, 1.5, gridW - 1.5, 0.55);
-  queue.push({
-    key: w1x + walkY,
-    fn: () => {
-      const seed = hashStr("walker1");
-      const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
-      const pt = tileCenter(w1x, walkY);
-      drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: true });
-      drawDog(pt.x - 13, pt.y, nowMs);
-    },
-  });
-  queue.push({
-    key: w2x + walkY + 0.05,
-    fn: () => {
-      const seed = hashStr("walker2");
-      const palette = { skin: pick(PALETTE.skin, seed), hair: pick(PALETTE.hair, seed >> 2), shirt: pick(PALETTE.shirt, seed >> 4) };
-      const pt = tileCenter(w2x, walkY);
-      drawPerson(ctx, pt.x, pt.y, "stand", { nowMs, palette, walking: true });
-    },
-  });
-
-  queue.sort((a, b) => a.key - b.key);
-  for (const job of queue) job.fn();
-
-  ctx.restore();
-  return bounds;
-}
-
 /* ---------- sky / roof / "other floors" bands (flat, decorative) ---------- */
 
 const SKY_H = 58;
@@ -1528,8 +1325,8 @@ function panToPosition(positionId) {
   const t = lastFloorLayout.deskTileByPos.get(positionId);
   if (!t) return;
   const local = isoPoint(t.x, t.y);
-  const px = lastFloorLayout.floorX + local.x;
-  const py = lastFloorLayout.floorY + local.y;
+  const px = lastFloorLayout.floorX + local.x * FLOOR_SCALE;
+  const py = lastFloorLayout.floorY + local.y * FLOOR_SCALE;
   camera.x = wrapEl.clientWidth / 2 - px * camera.scale;
   camera.y = wrapEl.clientHeight / 2 - py * camera.scale;
   camera.userSet = true;
@@ -1602,12 +1399,10 @@ function tick() {
     const tod = _tod;
     const positionsForRender = historyMode ? positionsAtTime(latestState.positions, nowMs) : latestState.positions;
     const floorScene = buildFloorScene(positionsForRender);
-    // The street is its own, wider stretch of ground (a building doesn't span
-    // the whole block) so there's always room for the street-life props below,
-    // even for a tiny one-room company whose floor alone would be very narrow.
-    const groundGridW = Math.max(floorScene.gridW + 10, 20);
-    const totalW = Math.max(floorScene.bounds.width, isoBounds(groundGridW, GROUND_D, 0, 0).width) + 20;
-    const totalH = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height + WIN_STRIP_H + isoBounds(groundGridW, GROUND_D, 70, 10).height;
+    const scaledW = floorScene.bounds.width * FLOOR_SCALE;
+    const scaledH = floorScene.bounds.height * FLOOR_SCALE;
+    const totalW = scaledW + 40;
+    const totalH = SKY_H + ROOF_H + WIN_STRIP_H + scaledH + 28;
 
     if (canvas.width !== Math.ceil(totalW) || canvas.height !== Math.ceil(totalH)) {
       canvas.width = Math.ceil(totalW);
@@ -1621,26 +1416,18 @@ function tick() {
     drawRoofBand(ctx, SKY_H, canvas.width);
     drawWindowStrip(ctx, SKY_H + ROOF_H, canvas.width, 1, nowMs, tod);
 
-    const floorX = (canvas.width - floorScene.bounds.width) / 2;
+    const floorX = (canvas.width - scaledW) / 2;
     const floorY = SKY_H + ROOF_H + WIN_STRIP_H;
     lastFloorLayout = { floorX, floorY, deskTileByPos: floorScene.deskTileByPos };
     ctx.save();
     ctx.translate(floorX, floorY);
+    ctx.scale(FLOOR_SCALE, FLOOR_SCALE);
     drawFloorScene(ctx, floorScene, nowMs, historyMode);
     ctx.restore();
 
-    const yAfterFloor = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height;
-    drawWindowStrip(ctx, yAfterFloor, canvas.width, 2, nowMs, tod);
     drawFloorPlaque(ctx, 6, SKY_H + ROOF_H + 3);
 
-    const groundBounds = isoBounds(groundGridW, GROUND_D, 70, 10);
-    const groundX = (canvas.width - groundBounds.width) / 2;
-    ctx.save();
-    ctx.translate(groundX, yAfterFloor + WIN_STRIP_H);
-    drawGroundScene(ctx, groundGridW, nowMs);
-    ctx.restore();
-
-    drawSeasonOverlay(ctx, canvas.width, canvas.height, currentSeason(nowMs), nowMs, floorY, yAfterFloor);
+    drawSeasonOverlay(ctx, canvas.width, canvas.height, currentSeason(nowMs), nowMs, floorY, canvas.height);
   }
   requestAnimationFrame(tick);
 }

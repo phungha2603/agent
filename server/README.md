@@ -131,7 +131,7 @@ sau thay vì mất — tối đa 3 lần, sau đó mới thực sự bỏ và gh
 ràng để biết vị trí nào đang gặp vấn đề.
 
 Dashboard hiển thị trong một khung nhìn cố định (`#building-wrap`, cuộn
-nội bộ không lộ ra ngoài trang) và tự co vừa toàn bộ cảnh (toà nhà + phố)
+nội bộ không lộ ra ngoài trang) và tự co vừa toàn bộ cảnh văn phòng
 khi tải lần đầu hoặc khi đổi kích thước cửa sổ — không phóng to quá kích
 thước gốc của canvas (tránh bị mờ). Dùng cuộn chuột để phóng to/thu nhỏ
 (zoom quanh đúng vị trí con trỏ), giữ chuột trái và kéo để di chuyển khung
@@ -179,8 +179,8 @@ thuật này đắt hơn nhiều nếu lặp lại cho mọi cửa sổ/đèn.
 Thêm 1 trục trang trí mới: **Mùa** (Xuân/Hạ/Thu/Đông), tự động theo tháng
 thật (hoặc theo thời điểm đang tua lại lịch sử), có thể ghim thủ công ở
 control bar. Chỉ ảnh hưởng vài hiệu ứng hạt rơi (tuyết mùa đông, lá mùa
-thu, cánh hoa mùa xuân) phủ ngoài cảnh trời/phố — không rơi xuyên qua mái
-toà nhà, và không ảnh hưởng dữ liệu agent.
+thu, cánh hoa mùa xuân) phủ ngoài dải trời phía trên — không rơi xuyên
+qua mái toà nhà, và không ảnh hưởng dữ liệu agent.
 
 Control bar dưới canvas giờ có 3 nhóm (kính mờ `backdrop-filter`, giống bố
 cục ảnh tham khảo của chủ dự án): **Lịch sử** (scrubber đã có ở trên),
@@ -195,33 +195,33 @@ lịch sử — 2 biến hoàn toàn tách biệt), và **Mùa** nói trên.
   rộng `agents/adapter.ts` để truyền `tools` vào SDK của từng provider.
 - Dashboard vẽ cả công ty bằng code trên một `<canvas>` liền mạch (chiếu
   phối cảnh isometric 2:1, không dùng ảnh/illustration ngoài), theo tông
-  neon/khí quyển (xem mục ngay trên): các phòng ghép chung một mặt bằng của
-  một tầng toà nhà, có tường/bàn/màn hình nổi khối; bên trên có bầu
-  trời/mây/nắng + dãy cửa sổ tầng trên, bên dưới có phố/vỉa hè/đèn
-  đường/xe/cây + một gian hàng rong và một ghế đá có người ngồi trò
-  chuyện (thuần trang trí, không gắn với dữ liệu agent). Nhân viên đi bộ
-  vào bàn khi bắt đầu ca, gõ phím khi đang chạy, bung dấu check khi xong,
-  dấu X đỏ khi lỗi; lúc **rảnh** (`waiting_shift`), nhân viên đứng dậy đi
-  lại tự do trong phòng, và cứ sau vài giây hệ thống có thể ghép ngẫu
-  nhiên 2 người rảnh cùng phòng đứng lại nói chuyện (bong bóng thoại) rồi
-  tự giải tán — toàn bộ hành vi này chạy ở client (`public/app.js`), chỉ
-  dựa trên `status`/`lastRunAt` từ WebSocket, không cần ảnh/sprite ngoài.
-  Các phòng xếp thành lưới hàng×cột gần vuông (không phải một hàng dài),
-  toàn bộ mặt bằng bao trong một viền chung (tường bắc/tây đầy đủ, viền
-  thấp phía nam/đông) nên đọc như một không gian chung được bao kín, dù
-  bên trong vẫn chia theo từng phòng ban.
+  neon/khí quyển (xem mục ngay trên). Chỉ còn văn phòng + phần ngoại thất
+  phía trên (bầu trời/mây/nắng, skyline, dãy cửa sổ tầng trên) — đã bỏ hẳn
+  cảnh phố/vỉa hè bên dưới để tập trung không gian cho văn phòng. Văn
+  phòng phóng to hơn hẳn bản trước (`FLOOR_SCALE` trong `public/app.js`,
+  một `ctx.scale()` quanh riêng cảnh văn phòng — không đụng vào hệ toạ độ
+  theo ô mà pan/zoom, camera lịch sử, và layout phòng/bàn đang phụ thuộc
+  vào), có thêm chi tiết: cốc uống nước + bàn phím trên bàn, thảm trải
+  dưới hàng bàn (chỉ là màu ô sàn riêng ở hàng đó — không phải hình vẽ đè
+  lên, để tránh bị ô sàn khác đè lên theo đúng lỗi z-sort đã từng gặp), và
+  một chậu cây góc phòng. Các phòng xếp thành lưới hàng×cột gần vuông
+  (không phải một hàng dài), toàn bộ mặt bằng bao trong một viền chung
+  (tường bắc/tây đầy đủ, viền thấp phía nam/đông) nên đọc như một không
+  gian chung được bao kín, dù bên trong vẫn chia theo từng phòng ban.
+  Nhân viên đi bộ vào bàn khi bắt đầu ca, gõ phím khi đang chạy, bung dấu
+  check khi xong, dấu X đỏ khi lỗi; lúc **rảnh** (`waiting_shift`), nhân
+  viên đứng dậy đi lại tự do trong phòng, và cứ sau vài giây hệ thống có
+  thể ghép ngẫu nhiên 2 người rảnh cùng phòng đứng lại nói chuyện (bong
+  bóng thoại) rồi tự giải tán — toàn bộ hành vi này chạy ở client
+  (`public/app.js`), chỉ dựa trên `status`/`lastRunAt` từ WebSocket, không
+  cần ảnh/sprite ngoài.
 - Cảnh vật đổi theo giờ thực của trình duyệt người xem (không phải giờ
   server): nắng ban ngày, ngả vàng lúc chiều, tối hẳn ban đêm có
-  sao/trăng — bầu trời, cửa sổ toà nhà, đèn đường và đèn trần văn phòng
-  đều chuyển cùng lúc theo một "độ tối" chung (`getTimeOfDay()` trong
-  `public/app.js`), nên nội thất và cảnh ngoài trời luôn khớp nhau. Một
-  đồng hồ kim treo trên tường bên trong không gian chung chạy đúng theo
-  giờ thực đó, cùng nguồn giờ với lịch chạy ca của agent.
-- Bên dưới toà nhà, ngoài gian hàng rong và ghế đá trò chuyện, còn có 2
-  người đi bộ dạo qua lại trên vỉa hè (một người dắt theo một chú chó
-  nhỏ), đèn giao thông đổi màu xanh/vàng/đỏ theo chu kỳ thật, và thùng
-  rác — toàn bộ chỉ là hoạt ảnh trang trí theo thời gian, không gắn với
-  dữ liệu agent.
+  sao/trăng — bầu trời, cửa sổ toà nhà, và đèn trần văn phòng đều chuyển
+  cùng lúc theo một "độ tối" chung (`getTimeOfDay()` trong `public/app.js`),
+  nên nội thất và cảnh ngoài trời luôn khớp nhau. Một đồng hồ kim treo trên
+  tường bên trong không gian chung chạy đúng theo giờ thực đó, cùng nguồn
+  giờ với lịch chạy ca của agent.
 - Lịch "interval" vẫn tính theo thời điểm chạy lần trước (`lastRunAt`), không
   phụ thuộc timezone — chỉ `daily` mới dùng `timezone` của config.
 - SQLite đã bật `journal_mode = WAL` và `busy_timeout = 5000` (state/db.ts)
