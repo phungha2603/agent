@@ -67,6 +67,12 @@ main {
 
 @media (min-width: 900px) {
   main { grid-template-columns: 3fr 1fr; align-items: start; }
+  /* #time-bar sits in document order between #building-wrap and #activity,
+     which auto-placement would put in the grid's 2nd column next to the
+     canvas instead of stacking under it — pin all three explicitly instead. */
+  #building-wrap { grid-column: 1; grid-row: 1; }
+  #time-bar { grid-column: 1; grid-row: 2; }
+  #activity { grid-column: 2; grid-row: 1 / span 2; }
 }
 
 #building-wrap {
@@ -99,6 +105,83 @@ main {
   image-rendering: crisp-edges;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+#time-bar {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  color: var(--ink);
+}
+
+#time-bar button,
+#time-bar select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+#time-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+#time-play {
+  min-width: 2.4em;
+}
+
+#time-track-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+#time-slider {
+  width: 100%;
+  margin: 0;
+}
+
+#time-markers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  pointer-events: none;
+}
+
+.time-marker {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 6px;
+  background: var(--error);
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+  border-radius: 1px;
+}
+
+#time-label {
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.9em;
 }
 
 #activity {

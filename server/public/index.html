@@ -22,6 +22,23 @@
     <section id="building-wrap" aria-label="Toà nhà công ty">
       <div id="building"></div>
     </section>
+    <div id="time-bar" aria-label="Điều khiển thời gian">
+      <button id="time-toggle" type="button">Xem lịch sử ⏱</button>
+      <div id="time-controls" hidden>
+        <button id="time-play" type="button" aria-label="Phát / tạm dừng">▶</button>
+        <select id="time-speed" aria-label="Tốc độ tua">
+          <option value="1">1x</option>
+          <option value="5">5x</option>
+          <option value="20">20x</option>
+        </select>
+        <div id="time-track-wrap">
+          <div id="time-markers"></div>
+          <input id="time-slider" type="range" min="0" max="1000" value="1000" step="1" />
+        </div>
+        <span id="time-label">--</span>
+        <button id="time-live" type="button">Về trực tiếp</button>
+      </div>
+    </div>
     <aside id="activity" aria-label="Nhật ký hoạt động">
       <h2>Nhật ký</h2>
       <ol id="activity-list"></ol>

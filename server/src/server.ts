@@ -52,6 +52,26 @@ app.get("/api/state", (_req, res) => {
   res.json(snapshot());
 });
 
+// Backs the dashboard's history/time-scrubber view: error markers on the
+// scrubber track and reconstructing each position's status as of some past
+// timestamp both just need the log rows in a time range (status-transition
+// rows included — see runner.ts's "status"-level appendLog calls).
+app.get("/api/history", (req, res) => {
+  const since = Number(req.query.since);
+  const until = Number(req.query.until);
+  if (!Number.isFinite(since) || !Number.isFinite(until)) {
+    res.status(400).json({ error: "since/until phải là epoch ms hợp lệ" });
+    return;
+  }
+  const logs = store.logsInRange(since, until).map((l) => ({
+    positionId: l.positionId,
+    ts: l.ts,
+    level: l.level,
+    message: l.message,
+  }));
+  res.json({ logs });
+});
+
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, { cors: { origin: "*" } });
 

@@ -139,6 +139,31 @@ nhìn; nhấp đúp để quay lại trạng thái vừa khung ban đầu. Một
 đã tự zoom/kéo, dashboard thôi tự động co lại nữa (tôn trọng góc nhìn họ
 chọn) cho đến khi họ nhấp đúp để reset.
 
+## Xem lại lịch sử (thanh tua thời gian)
+
+Dưới khung toà nhà có nút "Xem lịch sử" — bấm vào để chuyển dashboard sang
+chế độ xem lại quá khứ thay vì trực tiếp. Chế độ này cho:
+
+- Thanh scrubber kéo tới bất kỳ thời điểm nào từ lúc công ty có dữ liệu đầu
+  tiên đến hiện tại, nút play/pause tự tua theo tốc độ 1x/5x/20x, và một
+  nút "Về trực tiếp" để quay lại chế độ thường bất cứ lúc nào.
+- Ngày/đêm, đồng hồ kim trên tường, và chip trạng thái của từng vị trí đều
+  phản ánh ĐÚNG thời điểm đang xem (không phải thời gian thực) — dựng lại
+  từ các dòng log `level: "status"` mà `runShift()` ghi mỗi lần một vị trí
+  đổi trạng thái (không chỉ lúc xong/lỗi như trước), lấy qua
+  `GET /api/history?since=&until=`.
+- Các chấm đỏ trên thanh scrubber đánh dấu lúc có lỗi xảy ra — bấm vào một
+  chấm để nhảy thẳng tới thời điểm đó và camera tự pan tới đúng phòng.
+- Nhân viên hiển thị đứng/ngồi cố định tại bàn theo trạng thái lịch sử,
+  **không** replay lại việc đi lại/trò chuyện lúc rảnh — hành vi đó vốn chỉ
+  chạy ở trình duyệt người xem, ngẫu nhiên và không đồng bộ giữa các người
+  xem khác nhau (xem mục "Giới hạn hiện tại" bên dưới), nên không có "vị
+  trí thật" nào trong quá khứ để tua lại chính xác.
+
+Tính năng này được thiết kế qua 1 vòng thảo luận Claude↔Gemini riêng (3
+lượt) trước khi triển khai — xem lịch sử trao đổi trong quá trình phát
+triển nếu cần.
+
 ## Giới hạn hiện tại (biết trước để mở rộng)
 
 - Agent hiện chỉ gọi LLM một lượt rồi parse JSON ra kết quả — chưa có

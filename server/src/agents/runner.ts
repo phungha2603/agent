@@ -56,6 +56,12 @@ function parseModelOutput(text: string, position: PositionConfig): ParsedOutput 
 
 export async function runShift(store: StateStore, position: PositionConfig): Promise<void> {
   store.updatePosition(position.id, { status: "running" });
+  // The dashboard's history/time-scrubber view reconstructs "what status was
+  // this position in at some past timestamp T" by taking the latest
+  // level:"status" log row with ts <= T — `appendLog`'s "info"/"error" rows
+  // carry a human summary, not a parseable status, and `positions.status`
+  // itself has no history (each update overwrites it in place).
+  store.appendLog(position.id, "running", "status");
   bus.emit(EVT_STATE_CHANGED);
 
   const rawInbox = store.takeUnconsumed(position.inboxTopics, position.id);
@@ -86,6 +92,7 @@ export async function runShift(store: StateStore, position: PositionConfig): Pro
     }
 
     store.appendLog(position.id, summary, "info");
+    store.appendLog(position.id, "done", "status");
     store.updatePosition(position.id, {
       status: "done",
       lastRunAt: Date.now(),
@@ -104,6 +111,7 @@ export async function runShift(store: StateStore, position: PositionConfig): Pro
             : ` (${dropped} mục đã bỏ sau ${MAX_RETRIES} lần lỗi)`;
     }
     store.appendLog(position.id, `Lỗi: ${message}${retryNote}`, "error");
+    store.appendLog(position.id, "error", "status");
     store.updatePosition(position.id, {
       status: "error",
       lastRunAt: Date.now(),

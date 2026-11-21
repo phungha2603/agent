@@ -3,6 +3,14 @@ const connStatus = document.getElementById("conn-status");
 const buildingEl = document.getElementById("building");
 const activityEl = document.getElementById("activity-list");
 const companyNameEl = document.getElementById("company-name");
+const timeToggleBtn = document.getElementById("time-toggle");
+const timeControlsEl = document.getElementById("time-controls");
+const timePlayBtn = document.getElementById("time-play");
+const timeSpeedSel = document.getElementById("time-speed");
+const timeSliderEl = document.getElementById("time-slider");
+const timeMarkersEl = document.getElementById("time-markers");
+const timeLabelEl = document.getElementById("time-label");
+const timeLiveBtn = document.getElementById("time-live");
 
 socket.on("connect", () => {
   connStatus.textContent = "đang kết nối trực tiếp";
@@ -676,16 +684,23 @@ function buildFloorScene(positions) {
   return { byRoom, gridW, gridD, bounds, deskTileByPos, roomBoundsByPos, cellsFlat };
 }
 
-function drawFloorScene(ctx, scene, nowMs) {
+function drawFloorScene(ctx, scene, nowMs, historyMode) {
   const { gridW, gridD, bounds, cellsFlat, deskTileByPos, roomBoundsByPos, byRoom } = scene;
   _ctx = ctx;
   ctx.save();
   ctx.translate(bounds.originX, bounds.originY);
 
-  for (const p of [].concat(...byRoom.values())) {
-    updateBehavior(p, deskTileByPos.get(p.id), roomBoundsByPos.get(p.id), nowMs);
+  // History mode shows each position's *status* accurately as of the
+  // scrubbed time, but the idle wander/chat choreography was never recorded
+  // anywhere (client-side-only, randomized, not synced across viewers) and
+  // can't be replayed — so freeze everyone at their desk instead of feeding
+  // reconstructed-past status into the live wander state machine.
+  if (!historyMode) {
+    for (const p of [].concat(...byRoom.values())) {
+      updateBehavior(p, deskTileByPos.get(p.id), roomBoundsByPos.get(p.id), nowMs);
+    }
+    tryPairChats(byRoom, roomBoundsByPos, nowMs);
   }
-  tryPairChats(byRoom, roomBoundsByPos, nowMs);
 
   const queue = [];
 
@@ -759,12 +774,13 @@ function drawFloorScene(ctx, scene, nowMs) {
         hair: pick(PALETTE.hair, seed >> 2),
         shirt: pick(PALETTE.shirt, seed >> 4),
       };
-      const atDeskNow = a.mode === "seated";
+      const atDeskNow = historyMode || a.mode === "seated";
       // a.pos / deskTile already carry a tile-center-style coordinate, so
       // project with isoPoint directly — tileCenter() would add another +0.5
       // and visibly offset the sprite/chips from where the logic thinks it is.
-      const pt = isoPoint(a.pos.x, a.pos.y);
-      const key = a.pos.x + a.pos.y;
+      const renderPos = historyMode ? deskTile : a.pos;
+      const pt = isoPoint(renderPos.x, renderPos.y);
+      const key = renderPos.x + renderPos.y;
 
       queue.push({
         key,
@@ -791,7 +807,7 @@ function drawFloorScene(ctx, scene, nowMs) {
             drawChip(ctx, pt.x, headTop - 32, p.name, "rgba(28,24,18,0.82)");
             const label = (STATUS_LABEL[p.status] || (() => p.status))(p);
             drawChip(ctx, pt.x, headTop - 15, label, STATUS_COLOR[p.status] || "#8f8468");
-            if (a.mode === "chat") drawSpeechBubble(ctx, pt.x, headTop - 36, nowMs);
+            if (!historyMode && a.mode === "chat") drawSpeechBubble(ctx, pt.x, headTop - 36, nowMs);
           });
         },
       });
@@ -1253,6 +1269,154 @@ function ensureCanvas() {
   setupCamera();
 }
 
+/* ---------- time travel: history/scrubber over the same isometric scene ----
+ * "4D" (per the project owner, after clarifying what they meant) = keep the
+ * isometric 2D-canvas engine as-is, but add time itself as a first-class,
+ * scrubbable axis: real day/night + the wall clock already are pure
+ * functions of a single `nowMs`, so decoupling that from `Date.now()` lets
+ * the whole scene be viewed at any past moment. Reconstructed from the
+ * `logs` table via GET /api/history (see server.ts / state/db.ts) — every
+ * status transition is logged there (level:"status"), not just completions.
+ * Deliberately NOT replayed: the idle wander/chat choreography, which only
+ * ever existed client-side and per-viewer (see drawFloorScene's historyMode
+ * branch) — there's no historical "true position" to reconstruct. */
+
+let historyMode = false;
+let virtualTimeMs = Date.now();
+let playing = false;
+let playSpeed = 1;
+let historyLogs = [];
+let historyRangeStart = Date.now();
+let historyRangeEnd = Date.now();
+let lastFrameRealMs = null;
+let lastFloorLayout = null; // {floorX, floorY, deskTileByPos} from the latest tick(), for panning to a position
+
+/** Reconstructs a position's status as of `atMs` from its "status"-level log
+ * rows (sorted ascending by ts): the latest one at or before `atMs`, or
+ * "waiting_shift" if none yet existed at that time. */
+function statusAtTime(positionId, atMs) {
+  let status = "waiting_shift";
+  let ts = null;
+  for (const l of historyLogs) {
+    if (l.positionId !== positionId || l.level !== "status") continue;
+    if (l.ts > atMs) break;
+    status = l.message;
+    ts = l.ts;
+  }
+  return { status, ts };
+}
+
+function positionsAtTime(positions, atMs) {
+  return positions.map((p) => {
+    const { status, ts } = statusAtTime(p.id, atMs);
+    return { ...p, status, lastRunAt: ts };
+  });
+}
+
+function fmtDateTime(ts) {
+  return new Date(ts).toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function refreshTimeUI() {
+  timeToggleBtn.hidden = historyMode;
+  // Not `.hidden` here: #time-controls has its own CSS `display: flex` (an
+  // ID selector), which outranks the browser's `[hidden] { display: none }`
+  // attribute-selector rule and would leave it visible even when "hidden".
+  timeControlsEl.style.display = historyMode ? "flex" : "none";
+  timePlayBtn.textContent = playing ? "⏸" : "▶";
+  timeSliderEl.min = String(historyRangeStart);
+  timeSliderEl.max = String(historyRangeEnd);
+  timeSliderEl.value = String(virtualTimeMs);
+  timeLabelEl.textContent = historyMode ? fmtDateTime(virtualTimeMs) : "Trực tiếp";
+}
+
+function refreshTimeMarkers() {
+  timeMarkersEl.innerHTML = "";
+  const span = Math.max(1, historyRangeEnd - historyRangeStart);
+  for (const l of historyLogs) {
+    if (l.level !== "error") continue;
+    const pct = clamp(((l.ts - historyRangeStart) / span) * 100, 0, 100);
+    const mark = document.createElement("div");
+    mark.className = "time-marker";
+    mark.style.left = `${pct}%`;
+    mark.title = `${l.positionId} · ${fmtDateTime(l.ts)}`;
+    mark.addEventListener("click", () => {
+      playing = false;
+      virtualTimeMs = l.ts;
+      panToPosition(l.positionId);
+      refreshTimeUI();
+    });
+    timeMarkersEl.appendChild(mark);
+  }
+}
+
+async function enterHistoryMode() {
+  const until = Date.now();
+  try {
+    const res = await fetch(`/api/history?since=0&until=${until}`);
+    const data = await res.json();
+    historyLogs = Array.isArray(data.logs) ? data.logs : [];
+  } catch {
+    historyLogs = [];
+  }
+  historyRangeStart = historyLogs.length ? historyLogs[0].ts : until - 3600_000;
+  historyRangeEnd = until;
+  virtualTimeMs = historyRangeEnd;
+  historyMode = true;
+  playing = false;
+  refreshTimeMarkers();
+  refreshTimeUI();
+}
+
+function exitHistoryMode() {
+  historyMode = false;
+  playing = false;
+  refreshTimeUI();
+}
+
+/** Centers the camera on a position's desk — used when a scrubber error
+ * marker is clicked, so the room it happened in is actually in view. */
+function panToPosition(positionId) {
+  if (!lastFloorLayout || !wrapEl) return;
+  const t = lastFloorLayout.deskTileByPos.get(positionId);
+  if (!t) return;
+  const local = isoPoint(t.x, t.y);
+  const px = lastFloorLayout.floorX + local.x;
+  const py = lastFloorLayout.floorY + local.y;
+  camera.x = wrapEl.clientWidth / 2 - px * camera.scale;
+  camera.y = wrapEl.clientHeight / 2 - py * camera.scale;
+  camera.userSet = true;
+  applyCamera();
+}
+
+function setupTimeControls() {
+  timeToggleBtn.addEventListener("click", async () => {
+    await enterHistoryMode();
+  });
+  timeLiveBtn.addEventListener("click", () => {
+    exitHistoryMode();
+  });
+  timePlayBtn.addEventListener("click", () => {
+    if (!historyMode) return;
+    if (virtualTimeMs >= historyRangeEnd) virtualTimeMs = historyRangeStart;
+    playing = !playing;
+    refreshTimeUI();
+  });
+  timeSpeedSel.addEventListener("change", () => {
+    playSpeed = Number(timeSpeedSel.value) || 1;
+  });
+  timeSliderEl.addEventListener("input", () => {
+    playing = false;
+    virtualTimeMs = Number(timeSliderEl.value);
+    refreshTimeUI();
+  });
+}
+
 function render(state) {
   latestState = state;
   companyNameEl.textContent = state.companyName;
@@ -1260,12 +1424,27 @@ function render(state) {
 }
 
 function tick() {
+  const realNowMs = Date.now();
+  const dtMs = lastFrameRealMs != null ? realNowMs - lastFrameRealMs : 0;
+  lastFrameRealMs = realNowMs;
+
+  if (historyMode) {
+    if (playing) {
+      virtualTimeMs = Math.min(historyRangeEnd, virtualTimeMs + dtMs * playSpeed);
+      if (virtualTimeMs >= historyRangeEnd) playing = false;
+      refreshTimeUI();
+    }
+  } else {
+    virtualTimeMs = realNowMs;
+  }
+
   if (latestState) {
     ensureCanvas();
-    const nowMs = Date.now();
+    const nowMs = virtualTimeMs;
     _tod = getTimeOfDay(nowMs);
     const tod = _tod;
-    const floorScene = buildFloorScene(latestState.positions);
+    const positionsForRender = historyMode ? positionsAtTime(latestState.positions, nowMs) : latestState.positions;
+    const floorScene = buildFloorScene(positionsForRender);
     // The street is its own, wider stretch of ground (a building doesn't span
     // the whole block) so there's always room for the street-life props below,
     // even for a tiny one-room company whose floor alone would be very narrow.
@@ -1286,9 +1465,11 @@ function tick() {
     drawWindowStrip(ctx, SKY_H + ROOF_H, canvas.width, 1, nowMs, tod);
 
     const floorX = (canvas.width - floorScene.bounds.width) / 2;
+    const floorY = SKY_H + ROOF_H + WIN_STRIP_H;
+    lastFloorLayout = { floorX, floorY, deskTileByPos: floorScene.deskTileByPos };
     ctx.save();
-    ctx.translate(floorX, SKY_H + ROOF_H + WIN_STRIP_H);
-    drawFloorScene(ctx, floorScene, nowMs);
+    ctx.translate(floorX, floorY);
+    drawFloorScene(ctx, floorScene, nowMs, historyMode);
     ctx.restore();
 
     const yAfterFloor = SKY_H + ROOF_H + WIN_STRIP_H + floorScene.bounds.height;
@@ -1306,4 +1487,6 @@ function tick() {
 }
 
 socket.on("state", render);
+setupTimeControls();
+refreshTimeUI();
 requestAnimationFrame(tick);

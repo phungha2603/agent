@@ -28,7 +28,7 @@ export interface LogEntry {
   id: number;
   positionId: string;
   ts: number;
-  level: "info" | "error";
+  level: "info" | "error" | "status";
   message: string;
 }
 
@@ -72,6 +72,7 @@ export class StateStore {
         level TEXT NOT NULL,
         message TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs (ts);
     `);
   }
 
@@ -143,7 +144,7 @@ export class StateStore {
     return items;
   }
 
-  appendLog(positionId: string, message: string, level: "info" | "error" = "info") {
+  appendLog(positionId: string, message: string, level: "info" | "error" | "status" = "info") {
     this.db
       .prepare(
         `INSERT INTO logs (positionId, ts, level, message) VALUES (?, ?, ?, ?)`
@@ -151,10 +152,25 @@ export class StateStore {
       .run(positionId, Date.now(), level, message);
   }
 
+  /** For the human-facing activity feed only — excludes the "status" rows
+   * `runShift()` logs on every transition, which are plumbing for the
+   * history/time-scrubber view (see `logsInRange`), not something a reader
+   * wants mixed into a feed of one-line summaries and errors. */
   recentLogs(limit = 100): LogEntry[] {
     return this.db
-      .prepare(`SELECT * FROM logs ORDER BY id DESC LIMIT ?`)
+      .prepare(`SELECT * FROM logs WHERE level != 'status' ORDER BY id DESC LIMIT ?`)
       .all(limit) as LogEntry[];
+  }
+
+  /** Powers the dashboard's history/time-scrubber view: every log row in a
+   * time range, oldest first — including the `"status"`-level rows
+   * `runShift()` writes on every status transition, which is the only place
+   * "was this position running at some past timestamp" is recorded at all
+   * (the `positions` table only ever holds the current status). */
+  logsInRange(since: number, until: number): LogEntry[] {
+    return this.db
+      .prepare(`SELECT * FROM logs WHERE ts >= ? AND ts <= ? ORDER BY ts ASC`)
+      .all(since, until) as LogEntry[];
   }
 
   /** Called when a shift fails after already consuming its inbox items: puts
